@@ -120,3 +120,79 @@ class Controller:
             if session.matches(snapshot):
                 self.handle_error(session, exc)
 
+    async def new_conversation(self, session, persona_id):
+        if session.sending or (session.pending_id and session.pending_status != "failed"):
+            return
+        snapshot = session.snapshot()
+        try:
+            data = await self.api.request(
+                "POST", "/conversations", session.token, {"persona_id": persona_id}
+            )
+            if not session.matches(snapshot):
+                return
+            session.epoch += 1
+            session.conversation_id = data["id"]
+            session.turns = []
+            session.clear_pending()
+            session.notice = f"{data['persona']['name']}의 관점으로 대화를 시작합니다."
+            await self.refresh(session)
+        except ClientError as exc:
+            if session.matches(snapshot):
+                self.handle_error(session, exc)
+                if exc.code == "NETWORK_ERROR":
+                    session.notice = (
+                        "대화 생성 여부를 확인할 수 없습니다. 목록을 새로고침해 주세요."
+                    )
+
+    async def open_conversation(self, session, cid):
+        if session.sending or not cid:
+            return
+        session.epoch += 1
+        session.conversation_id = int(cid)
+        session.turns = []
+        session.clear_pending()
+        await self.reconcile(session)
+
+    async def reconcile(self, session, keep_notice=False):
+        if not session.token or not session.conversation_id or session.sending:
+            return
+        snapshot = session.snapshot()
+        try:
+            turns = await self.api.pages(f"/conversations/{snapshot[2]}/turns", snapshot[1])
+            if not session.matches(snapshot):
+                return
+            session.turns = turns
+            turn = next((t for t in turns if t["id"] == session.pending_id), None)
+            if turn is None and not session.pending_id:
+                turn = next((t for t in turns if t["status"] == "processing"), None)
+            if turn:
+                if turn["status"] == "completed":
+                    session.clear_pending()
+                    session.notice = "저장된 답변을 확인했습니다."
+                else:
+                    session.pending_id, session.pending_question = turn["id"], turn["question"]
+                    session.pending_status = turn["status"]
+                    if turn["status"] == "failed":
+                        self.handle_error(session, ClientError(turn["error_code"]))
+                    elif not keep_notice:
+                        session.notice = "답변을 생성하고 있습니다. 2초 간격으로 상태를 확인합니다."
+            elif session.pending_id:
+                session.pending_status = "unknown"
+                session.notice = (
+                    "아직 저장된 결과가 없습니다. ‘결과 확인 / 다시 요청’을 눌러 확인하세요."
+                )
+            elif not keep_notice:
+                failed = next((t for t in reversed(turns) if t["status"] == "failed"), None)
+                failed_count = sum(t["status"] == "failed" for t in turns)
+                session.notice = (
+                    (
+                        f"기록을 불러왔습니다. 실패한 질문 {failed_count}개. "
+                        + ClientError(failed["error_code"]).message
+                    )
+                    if failed
+                    else "기록을 불러왔습니다."
+                )
+        except ClientError as exc:
+            if session.matches(snapshot):
+                self.handle_error(session, exc)
+
