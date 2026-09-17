@@ -1,0 +1,74 @@
+services:
+  backend:
+    build:
+      context: .
+      target: backend
+    restart: unless-stopped
+    init: true
+    environment:
+      DATABASE_URL: sqlite:////data/chat.db
+      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-43200}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_SERVICE_TOKEN: ${LLM_SERVICE_TOKEN:-}
+      LLM_MODEL: ${LLM_MODEL:-local-advisor}
+      LLM_TOKENIZER_PATH: /tokenizer
+      LLM_CONTEXT_TOKENS: ${LLM_CONTEXT_TOKENS:-4096}
+      LLM_MAX_OUTPUT_TOKENS: ${LLM_MAX_OUTPUT_TOKENS:-256}
+      LLM_CONNECT_TIMEOUT_SECONDS: ${LLM_CONNECT_TIMEOUT_SECONDS:-5}
+      LLM_GENERATION_TIMEOUT_SECONDS: ${LLM_GENERATION_TIMEOUT_SECONDS:-120}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-130}
+      TURN_TIMEOUT_SECONDS: ${TURN_TIMEOUT_SECONDS:-145}
+      BACKEND_TIMEOUT_SECONDS: ${BACKEND_TIMEOUT_SECONDS:-160}
+      PROXY_TIMEOUT_SECONDS: ${PROXY_TIMEOUT_SECONDS:-180}
+      TURN_STALE_SECONDS: ${TURN_STALE_SECONDS:-210}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - chat_data:/data
+      - ${TOKENIZER_HOST_PATH:-./models/tokenizer}:/tokenizer:ro
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 150s
+  frontend:
+    build:
+      context: .
+      target: frontend
+    restart: unless-stopped
+    init: true
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      BACKEND_BASE_URL: http://backend:8000
+      BACKEND_TIMEOUT_SECONDS: ${BACKEND_TIMEOUT_SECONDS:-160}
+      GRADIO_SERVER_NAME: 0.0.0.0
+      GRADIO_SERVER_PORT: 7860
+      GRADIO_ANALYTICS_ENABLED: "False"
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      PROXY_TIMEOUT_SECONDS: ${PROXY_TIMEOUT_SECONDS:-180}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+volumes:
+  chat_data:
+  caddy_data:
+  caddy_config:
