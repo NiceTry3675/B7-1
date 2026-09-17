@@ -11,7 +11,7 @@
 - SQLite WAL, 외래 키, 대화별 처리 중 턴 1개 제한, 질문 UUID 멱등성, 중단된 턴 정리
 - 최근 완료된 5개 턴 문맥, 정확한 토크나이저 기반 입력 예산, LLM HTTP 연동·오류 변환
 - Gradio 사용자별 상태, 모든 기록 페이지 조회, 결과 유실 복구, 수동 재시도, 중복 전송 차단
-- Docker Compose, Caddy HTTPS, 영속 볼륨, 온라인 백업, CI와 자동 테스트
+- Docker Compose, NGINX HTTPS·Certbot 인증서 관리, 영속 볼륨, 온라인 백업, CI와 자동 테스트
 
 **로컬 LLM 실행, 모델 다운로드·로딩·추론, 라즈베리파이 내부 API 서버는 구현 대상에서 제외했습니다.**
 외부 생성형 AI로 전환하거나 가짜 답변을 반환하지 않습니다. 연결 설정이 없으면 질문이
@@ -52,6 +52,10 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
                                       └→ 비공개 네트워크 → 라즈베리파이 내부 LLM API (별도 구현)
 ```
 
+배포 시 브라우저는 NGINX의 HTTPS 주소로 접속합니다. NGINX는 화면 요청을 Gradio로,
+`/api/v1/*`와 API 문서 요청을 FastAPI로 전달합니다. 인증서 최초 발급과 자동 갱신 등록은
+[운영 가이드](docs/OPERATIONS.md#docker-compose-배포)를 따릅니다.
+
 | 경로 | 역할 |
 | --- | --- |
 | `app/main.py` | 앱 생성·종료, 라우터 등록, 요청 추적, 공통 오류 처리 |
@@ -66,6 +70,8 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
 | `frontend/controller.py` | 사용자별 상태, 응답 유실 확인, 재시도 |
 | `frontend/client.py` | 사용자별 Bearer 헤더, 전체 HTTP 제한 |
 | `tests/` | API·동시성·LLM 계약·프론트 흐름 검증 |
+| `deploy/nginx/` | NGINX 이미지, 인증서 유무에 따른 초기 기동·HTTPS 설정 |
+| `scripts/manage_tls.py` | Certbot 최초 발급·갱신 및 NGINX 인증서 적용 |
 | `docs/OPERATIONS.md` | 배포, 환경 변수, 백업·복원·장애 처리 |
 | `docs/DB_GUIDE.md` | ERD와 DB 평가 방법 |
 
@@ -130,6 +136,12 @@ curl -s http://127.0.0.1:8000/api/v1/conversations/1/turns \
 uv run pytest -q
 uv run ruff check .
 uv run ruff format --check .
+```
+
+Docker Engine이 있는 환경에서는 실제 NGINX 컨테이너의 HTTP/HTTPS·라우팅·실시간 응답도 검사합니다.
+
+```bash
+RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
 ```
 
 테스트는 임시 DB와 테스트 전용 LLM 응답을 사용하며, 실제 모델을 호출하지 않습니다.

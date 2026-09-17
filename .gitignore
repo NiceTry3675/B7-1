@@ -14,3 +14,4 @@ backups/
 models/
 .coverage
 htmlcov/
+tls-renew.log
