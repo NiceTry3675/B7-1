@@ -1,0 +1,28 @@
+[project]
+name = "great-person-chat"
+version = "0.1.0"
+description = "위인의 관점을 참고하는 대화 서비스"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn[standard]>=0.34,<1",
+  "httpx>=0.28,<1", "pydantic-settings>=2.8,<3",
+  "email-validator>=2.2,<3", "argon2-cffi>=23.1,<26",
+  "gradio>=6,<7",
+]
+
+[project.optional-dependencies]
+tokenizer = ["transformers>=4.50,<5", "sentencepiece>=0.2,<1"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=0.25,<2", "ruff>=0.11,<1"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
