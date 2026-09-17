@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+COMMON_ERRORS = ("AUTH_REQUIRED", "INVALID_INPUT", "DB_ERROR", "INTERNAL_ERROR")
+
 ERRORS = {
     "AUTH_REQUIRED": (401, "다시 로그인해 주세요."),
     "INVALID_CREDENTIALS": (401, "이메일 또는 비밀번호가 올바르지 않습니다."),
