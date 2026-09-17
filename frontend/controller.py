@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from uuid import uuid4
 
 from frontend.client import ClientError
 
@@ -152,6 +153,51 @@ class Controller:
         session.turns = []
         session.clear_pending()
         await self.reconcile(session)
+
+    def prepare_send(self, session, content):
+        if session.sending:
+            return False
+        if not session.token or not session.conversation_id:
+            session.notice = "로그인 후 대화를 선택해 주세요."
+            return False
+        content = content.strip()
+        if not 1 <= len(content) <= 2000:
+            session.notice = "질문을 1~2,000자로 입력해 주세요."
+            return False
+        if session.pending_id and session.pending_status != "failed":
+            session.notice = "앞선 질문의 결과를 먼저 확인해 주세요."
+            return False
+        session.pending_id = str(uuid4())
+        session.pending_question = content
+        session.pending_status = "processing"
+        session.sending = True
+        session.notice = "답변을 생성하고 있습니다."
+        return True
+
+    async def transmit(self, session):
+        snapshot = session.snapshot()
+        tid, question = session.pending_id, session.pending_question
+        try:
+            turn = await self.api.request(
+                "POST",
+                f"/conversations/{snapshot[2]}/turns",
+                snapshot[1],
+                {"client_message_id": tid, "content": question},
+            )
+            if not session.matches(snapshot):
+                return
+            session.turns = [t for t in session.turns if t["id"] != tid] + [turn]
+            session.clear_pending()
+            session.notice = "답변이 저장되었습니다."
+        except ClientError as exc:
+            if not session.matches(snapshot):
+                return
+            session.sending = False
+            # An error response can be lost after a successful DB commit. Only records resolve it.
+            self.handle_error(session, exc)
+            if session.matches(snapshot) and session.pending_id:
+                session.pending_status = "unknown"
+                await self.reconcile(session, keep_notice=True)
 
     async def reconcile(self, session, keep_notice=False):
         if not session.token or not session.conversation_id or session.sending:
