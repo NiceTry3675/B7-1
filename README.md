@@ -54,7 +54,12 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
 
 | 경로 | 역할 |
 | --- | --- |
-| `app/main.py` | 공개 API, 인증, 요청 추적, 공통 오류, 턴 처리 |
+| `app/main.py` | 앱 생성·종료, 라우터 등록, 요청 추적, 공통 오류 처리 |
+| `app/routers/auth.py` | 회원가입·로그인·로그아웃·내 정보 API |
+| `app/routers/personas.py` | 위인 목록 API |
+| `app/routers/conversations.py` | 대화 생성·목록·기록 조회, 질문·답변 처리 API |
+| `app/routers/health.py` | 프로세스 상태 확인 API |
+| `app/dependencies.py` | 공통 인증·DB·설정 의존성, 비밀번호·토큰 처리, 비동기 작업 실행 |
 | `app/db.py` | 스키마, 트랜잭션, 시드, 멱등성, 중단 복구 |
 | `app/llm.py` | 내부 HTTP 계약, 토큰 계산, 문맥 자르기, 오류 변환 |
 | `frontend/main.py` | Gradio 화면과 이벤트 |

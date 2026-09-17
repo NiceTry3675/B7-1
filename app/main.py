@@ -1,72 +1,22 @@
 import asyncio
-import hashlib
 import logging
-import secrets
-import sqlite3
 import time
 from contextlib import asynccontextmanager, suppress
-from functools import partial
-from typing import Annotated
 from uuid import uuid4
 
-import anyio
-from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerificationError
-from fastapi import Depends, FastAPI, Path, Query, Request, Response
+from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from starlette.exceptions import HTTPException
 
-from app import schemas as s
 from app.config import Settings
 from app.db import Database
-from app.errors import APIError, error_docs
-from app.llm import ChatTokenCounter, LLMClient, build_context
+from app.dependencies import db_call, threaded
+from app.errors import APIError
+from app.llm import ChatTokenCounter, LLMClient
+from app.routers import auth, conversations, health, personas
 
 logger = logging.getLogger("advisor")
-bearer = HTTPBearer(auto_error=False)
-password_hasher = PasswordHasher()
-DUMMY_HASH = password_hasher.hash(secrets.token_urlsafe(32))
-COMMON = ("AUTH_REQUIRED", "INVALID_INPUT", "DB_ERROR", "INTERNAL_ERROR")
-
-
-async def threaded(func, *args, **kwargs):
-    return await anyio.to_thread.run_sync(partial(func, *args, **kwargs))
-
-
-async def db_call(func, *args, **kwargs):
-    try:
-        return await threaded(func, *args, **kwargs)
-    except sqlite3.Error as exc:
-        raise APIError("DB_ERROR") from exc
-
-
-def token_digest(token):
-    return hashlib.sha256(token.encode()).hexdigest()
-
-
-def verify_password(stored, password):
-    try:
-        return password_hasher.verify(stored, password)
-    except (VerificationError, InvalidHashError):
-        return False
-
-
-async def current_user(
-    request: Request, credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
-):
-    if credentials is None:
-        raise APIError("AUTH_REQUIRED")
-    user = await db_call(request.app.state.db.authenticate, token_digest(credentials.credentials))
-    request.state.user_id = user["id"]
-    return user
-
-
-UserDep = Annotated[dict, Depends(current_user)]
-ConversationID = Annotated[int, Path(gt=0)]
-Limit = Annotated[int, Query(ge=1, le=100)]
-Offset = Annotated[int, Query(ge=0)]
 
 
 def create_app(settings=None, *, llm=None, token_counter=None):
@@ -172,175 +122,8 @@ def create_app(settings=None, *, llm=None, token_counter=None):
             error.message = "요청한 API 경로 또는 메서드를 확인해 주세요."
         return error_response(request, error)
 
-    @app.post(
-        "/api/v1/auth/signup",
-        response_model=s.User,
-        status_code=201,
-        responses=error_docs("EMAIL_ALREADY_EXISTS", "INVALID_INPUT", "DB_ERROR"),
-    )
-    async def signup(body: s.Signup):
-        hashed = await threaded(password_hasher.hash, body.password)
-        return await db_call(db.signup, str(body.email), hashed)
-
-    @app.post(
-        "/api/v1/auth/login",
-        response_model=s.Login,
-        responses=error_docs("INVALID_CREDENTIALS", "INVALID_INPUT", "DB_ERROR"),
-    )
-    async def login(body: s.Credentials):
-        user = await db_call(db.find_user, str(body.email))
-        valid = await threaded(
-            verify_password, user["password_hash"] if user else DUMMY_HASH, body.password
-        )
-        if not user or not valid:
-            raise APIError("INVALID_CREDENTIALS")
-        token = secrets.token_urlsafe(32)
-        await db_call(db.new_session, user["id"], token_digest(token), settings.session_ttl_seconds)
-        return {"access_token": token, "expires_in": settings.session_ttl_seconds, "user": user}
-
-    @app.post("/api/v1/auth/logout", status_code=204, responses=error_docs(*COMMON))
-    async def logout(user: UserDep):
-        await db_call(db.logout, user["session_id"])
-        return Response(status_code=204)
-
-    @app.get("/api/v1/me", response_model=s.User, responses=error_docs(*COMMON))
-    async def me(user: UserDep):
-        return user
-
-    @app.get("/api/v1/personas", response_model=s.Personas, responses=error_docs(*COMMON))
-    async def personas(user: UserDep):
-        return {"items": await db_call(db.personas)}
-
-    @app.post(
-        "/api/v1/conversations",
-        response_model=s.Conversation,
-        status_code=201,
-        responses=error_docs(*COMMON, "PERSONA_NOT_FOUND"),
-    )
-    async def new_conversation(body: s.NewConversation, user: UserDep):
-        return await db_call(db.new_conversation, user["id"], body.persona_id)
-
-    @app.get(
-        "/api/v1/conversations", response_model=s.ConversationPage, responses=error_docs(*COMMON)
-    )
-    async def conversations(user: UserDep, limit: Limit = 20, offset: Offset = 0):
-        return await db_call(db.conversations, user["id"], limit, offset)
-
-    @app.get(
-        "/api/v1/conversations/{conversation_id}/turns",
-        response_model=s.TurnPage,
-        responses=error_docs(*COMMON, "CONVERSATION_NOT_FOUND"),
-    )
-    async def turns(
-        conversation_id: ConversationID, user: UserDep, limit: Limit = 20, offset: Offset = 0
-    ):
-        return await db_call(db.turns, user["id"], conversation_id, limit, offset)
-
-    @app.post(
-        "/api/v1/conversations/{conversation_id}/turns",
-        response_model=s.Turn,
-        status_code=201,
-        responses={
-            200: {"model": s.Turn, "description": "이미 완료된 동일 질문"},
-            **error_docs(
-                *COMMON,
-                "CONVERSATION_NOT_FOUND",
-                "CONVERSATION_BUSY",
-                "MESSAGE_IN_PROGRESS",
-                "MESSAGE_ID_CONFLICT",
-                "CONTEXT_TOO_LARGE",
-                "AI_UNAVAILABLE",
-                "AI_BUSY",
-                "AI_NOT_READY",
-                "AI_CONFIG_ERROR",
-                "AI_TIMEOUT",
-                "REQUEST_INTERRUPTED",
-            ),
-        },
-    )
-    async def new_turn(
-        conversation_id: ConversationID,
-        body: s.NewTurn,
-        user: UserDep,
-        request: Request,
-        response: Response,
-    ):
-        tid, cid, rid = str(body.client_message_id), conversation_id, request.state.request_id
-        existing, system, history = await db_call(db.begin_turn, user["id"], cid, tid, body.content)
-        if existing:
-            response.status_code = 200
-            return existing
-        logger.info(
-            "db_save_success request_id=%s user_id=%s conversation_id=%s turn_id=%s "
-            "status=processing",
-            rid,
-            user["id"],
-            cid,
-            tid,
-        )
-        failure = None
-        answer = None
-        started = time.monotonic()
-        # Reserve 3 seconds for the final transaction and error serialization.
-        remaining = settings.turn_timeout_seconds - (started - request.state.started) - 3
-        try:
-            async with asyncio.timeout(max(0, remaining)):
-                messages = await threaded(
-                    build_context, settings, app.state.token_counter, system, history, body.content
-                )
-                logger.info(
-                    "ai_call_start request_id=%s user_id=%s conversation_id=%s turn_id=%s",
-                    rid,
-                    user["id"],
-                    cid,
-                    tid,
-                )
-                answer = await app.state.llm.generate(system, messages, rid)
-                logger.info(
-                    "ai_call_success request_id=%s latency_ms=%s",
-                    rid,
-                    int((time.monotonic() - started) * 1000),
-                )
-        except TimeoutError:
-            failure = APIError("AI_TIMEOUT", turn_id=tid)
-        except APIError as exc:
-            failure = exc
-            failure.turn_id = tid
-        except Exception:
-            failure = APIError("INTERNAL_ERROR", turn_id=tid)
-        if failure:
-            logger.warning(
-                "ai_call_failure request_id=%s code=%s latency_ms=%s",
-                rid,
-                failure.code,
-                int((time.monotonic() - started) * 1000),
-            )
-        try:
-            row = await db_call(
-                db.finish_turn,
-                cid,
-                tid,
-                answer=answer if not failure else None,
-                error=failure.code if failure else None,
-            )
-        except APIError as exc:
-            exc.turn_id = tid
-            raise
-        logger.info(
-            "db_save_success request_id=%s user_id=%s conversation_id=%s turn_id=%s status=%s",
-            rid,
-            user["id"],
-            cid,
-            tid,
-            row["status"],
-        )
-        if row["status"] == "failed":
-            raise APIError(row["error_code"], turn_id=tid)
-        return row
-
-    @app.get("/api/v1/health", response_model=s.Health)
-    async def health():
-        return {"status": "ok"}
+    for router in (auth.router, personas.router, conversations.router, health.router):
+        app.include_router(router, prefix="/api/v1")
 
     return app
 
