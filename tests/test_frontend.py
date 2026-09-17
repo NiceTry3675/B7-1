@@ -100,3 +100,35 @@ async def test_logout_db_failure_keeps_session():
     assert session.token == "token" and session.conversation_id == 1
 
 
+def test_gradio_builds():
+    from frontend.main import build_ui
+
+    demo = build_ui()
+    assert len(demo.config["dependencies"]) >= 10
+    states = [c for c in demo.config["components"] if c["type"] == "state"]
+    assert len(states) == 1
+
+
+async def test_gradio_callback_serialization(app):
+    from gradio.state_holder import SessionState
+
+    from frontend.main import build_ui
+
+    demo = build_ui(api=BackendClient("http://test", transport=httpx.ASGITransport(app=app)))
+    state = SessionState(demo)
+    indices = {fn.fn.__name__: key for key, fn in demo.fns.items()}
+    credentials = [None, "callback@example.com", "test-password123"]
+    await demo.process_api(indices["do_signup"], credentials, state=state)
+    login = await demo.process_api(indices["do_login"], credentials, state=state)
+    assert login["data"][2]["visible"]
+    created = await demo.process_api(indices["do_create"], [None, "socrates"], state=state)
+    assert created["data"][5]["value"] > 0
+    sent = await demo.process_api(indices["do_send"], [None, "테스트 질문"], state=state)
+    assert sent["is_generating"]
+    completed = await demo.process_api(
+        indices["do_send"], [], state=state, iterator=sent["iterator"]
+    )
+    assert len(completed["data"][6]) == 2
+    logout = await demo.process_api(indices["do_logout"], [None], state=state)
+    assert not logout["data"][2]["visible"]
+    assert logout["data"][6] == []
