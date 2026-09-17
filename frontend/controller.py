@@ -242,3 +242,18 @@ class Controller:
             if session.matches(snapshot):
                 self.handle_error(session, exc)
 
+    async def retry(self, session, content):
+        if session.sending:
+            return False
+        if session.pending_id:
+            await self.reconcile(session)
+            if session.pending_status == "processing":
+                return False
+            if session.pending_status == "unknown":
+                # Explicit user retry only, with the same UUID AND original normalized content.
+                session.sending = True
+                session.notice = "같은 질문의 결과를 다시 확인하고 있습니다."
+                return True
+            if session.pending_id is None:
+                return False
+        return self.prepare_send(session, content or session.pending_question)
