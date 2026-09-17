@@ -46,6 +46,7 @@ services:
       GRADIO_SERVER_NAME: 0.0.0.0
       GRADIO_SERVER_PORT: 7860
       GRADIO_ANALYTICS_ENABLED: "False"
+      FORWARDED_ALLOW_IPS: "*"
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7860/')"]
       interval: 15s
@@ -53,7 +54,7 @@ services:
       retries: 3
       start_period: 30s
   proxy:
-    image: caddy:2-alpine
+    build: ./deploy/nginx
     restart: unless-stopped
     depends_on:
       frontend:
@@ -65,10 +66,23 @@ services:
       SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
       PROXY_TIMEOUT_SECONDS: ${PROXY_TIMEOUT_SECONDS:-180}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
+      - tls_certificates:/etc/letsencrypt:ro
+      - acme_webroot:/var/www/certbot:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+  certbot:
+    image: certbot/certbot:v5.8.0
+    profiles: [tls]
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - tls_certificates:/etc/letsencrypt
+      - acme_webroot:/var/www/certbot
 volumes:
   chat_data:
-  caddy_data:
-  caddy_config:
+  tls_certificates:
+  acme_webroot:

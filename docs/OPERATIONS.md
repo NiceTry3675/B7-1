@@ -23,10 +23,11 @@
 | `LLM_GENERATION_TIMEOUT_SECONDS` | 120; 시간 순서 검증용. 실제 추론 제한은 래퍼가 적용 |
 | `LLM_TIMEOUT_SECONDS` | 130; 백엔드의 내부 HTTP 전체 호출 제한 |
 | `TURN_TIMEOUT_SECONDS` | 145; 마지막 저장·응답에 3초 예약 |
-| `PROXY_TIMEOUT_SECONDS` | 180 이상; Compose가 Caddy에도 전달 |
+| `PROXY_TIMEOUT_SECONDS` | 180 이상의 정수(초); NGINX 읽기·쓰기 대기 제한에도 적용 |
 | `TURN_STALE_SECONDS` | 210; 시작 시 및 10초마다 초과 턴 정리 |
 | `LOG_LEVEL` | INFO |
-| `SITE_ADDRESS` | Compose 전용; 외부 DNS 도메인 |
+| `SITE_ADDRESS` | Compose 전용; `https://`·포트·경로 없는 외부 DNS 도메인. 기본 `localhost`는 배포용이 아님 |
+| `ACME_EMAIL` | Compose 전용; Let's Encrypt 계정 등록 이메일. 최초 인증서 발급 시 필수 |
 | `TOKENIZER_HOST_PATH` | Compose 전용; 호스트의 토크나이저 디렉터리 |
 
 시간 제한은 `연결 < 생성 < 내부 HTTP < 턴 < 프론트 < 프록시 < 정리` 순서여야 합니다.
@@ -43,18 +44,37 @@
 ```bash
 cp .env.example .env
 mkdir -p models/tokenizer
-# .env의 SITE_ADDRESS, LLM_*와 TOKENIZER_HOST_PATH를 실제 값으로 설정합니다.
+# .env의 SITE_ADDRESS, ACME_EMAIL, LLM_*와 TOKENIZER_HOST_PATH를 실제 값으로 설정합니다.
 docker compose up -d --build
+# Python 3의 표준 라이브러리만 사용하며, 프로젝트 .env는 Compose가 읽습니다.
+python3 -m scripts.manage_tls issue --dry-run
+python3 -m scripts.manage_tls issue
 docker compose ps
 docker compose logs --tail 100 backend frontend proxy
 ```
 
-Caddy는 실제 도메인에 자동 HTTPS를 제공합니다. localhost 기본값은 공인 배포 주소가 아니며
-로컬 인증서 신뢰 설정이 필요하므로 로컬 개발은 README의 8000/7860 실행을 사용합니다.
-백엔드·프론트 포트는 호스트에 직접 공개하지 않습니다. 추론 API도 외부에 공개하지 않습니다.
-Gradio 대화 요청과 큐 이벤트를 위해 프록시 대기를 180초 이상으로 설정했습니다.
+NGINX는 첫 실행 시 인증서가 없어도 기동합니다. 이때 80번 포트의 ACME 검증 경로와
+`/nginx-health`만 제공하며, 나머지 요청은 503입니다. 로그인·대화 화면은 HTTPS가 준비된 뒤 제공됩니다.
+`issue --dry-run`은 테스트 인증 기관으로 도메인 연결을 검사하고 인증서를 저장하지 않습니다.
+`issue`는 Certbot webroot 방식으로 실제 인증서를 발급하고 프록시를 재생성해 HTTPS를 활성화합니다.
+이 명령은 Let's Encrypt 이용약관에 동의하여 계정을 등록합니다. 도메인의 DNS와 80/443 포트를
+이 서버로 연결한 뒤 실행하세요. 공인 인증서 없이 로컬에서 개발할 때는 README의 8000/7860 실행을 사용합니다.
 
-컨테이너는 비관리자 계정으로 실행하며 SQLite는 `chat_data` 볼륨에 보존됩니다.
+인증서는 `tls_certificates`, 검증 파일은 `acme_webroot` 볼륨을 공유합니다. NGINX에서는 두 볼륨 모두
+읽기 전용입니다. 인증서 경로는 `/etc/letsencrypt/live/<SITE_ADDRESS>/fullchain.pem`과 `privkey.pem`입니다.
+인증서가 준비되면 일반 HTTP 요청은 HTTPS로 308 전환하며 ACME 경로는 계속 HTTP로 제공합니다.
+프록시 healthcheck는 프로세스 확인이므로 인증서 준비 여부는 `https://<SITE_ADDRESS>`에서 따로 확인합니다.
+
+NGINX는 `/api/v1/*`, `/docs`, `/docs/*`, `/openapi.json`, `/redoc`를 백엔드로 전달하고
+나머지는 Gradio로 전달합니다. SSE 응답 버퍼링을 끄고 WebSocket Upgrade 헤더를 전달하며,
+AI 응답 대기를 위해 프록시 제한을 180초 이상으로 설정했습니다. 컨테이너 재생성으로 내부 IP가 바뀌면
+Docker DNS로 다시 조회합니다. 접근 로그에는 쿼리 문자열·인증 헤더·요청 본문을 기록하지 않습니다.
+
+백엔드·프론트 포트는 호스트에 직접 공개하지 않습니다. 이 제한을 전제로 두 서비스는 내부 프록시의
+전달 헤더를 신뢰하며, NGINX가 클라이언트가 보낸 `X-Forwarded-*` 값을 덮어씁니다.
+추론 API도 외부에 공개하지 않습니다.
+
+백엔드·프론트 컨테이너는 비관리자 계정으로 실행하며 SQLite는 `chat_data` 볼륨에 보존됩니다.
 백엔드는 항상 `--workers 1`, 복제본 1개를 사용합니다. 재배포 시
 `docker compose up -d --build`를 사용하며 **`docker compose down -v`는 DB까지 삭제하므로 사용하지 마세요.**
 
@@ -66,6 +86,33 @@ docker compose exec backend python -m scripts.check_llm
 
 이 점검은 인증된 `/internal/v1/health`만 호출하고 생성 슬롯을 사용하지 않습니다.
 health 성공 후에도 generate는 `AI_BUSY` 등을 반환할 수 있습니다.
+
+## 인증서 자동 갱신과 기존 배포 교체
+
+Certbot 컨테이너 자체는 스케줄러를 실행하지 않습니다. 최초 발급 후 다음 검사를 수행하고,
+배포 호스트에서 Docker 실행 권한이 있는 계정의 crontab에 하루 두 번 갱신 작업을 등록합니다.
+
+```bash
+python3 -m scripts.manage_tls renew --dry-run
+```
+
+```cron
+17 3,15 * * * cd /srv/B7-1 && /usr/bin/python3 -m scripts.manage_tls renew >> /srv/B7-1/tls-renew.log 2>&1
+```
+
+`/srv/B7-1`은 실제 배포 디렉터리로 바꿉니다. cron의 PATH에서 `docker`를 찾을 수 있어야 합니다.
+갱신은 만료가 가까운 인증서에만 수행됩니다. 성공 후 `nginx -t`와 무중단 reload로 새 인증서를 적용하며,
+Certbot 실패 시 reload하지 않습니다. 갱신 로그·실패 알림을 운영 환경에서 확인하세요.
+개인 키가 포함된 `tls_certificates` 볼륨은 Git에 넣지 않고 접근을 제한합니다.
+
+기존 배포를 바꿀 때도 같은 Compose 프로젝트 이름과 `chat_data` 볼륨을 사용합니다.
+DB를 백업한 뒤 `docker compose up -d --build`로 프록시를 교체하고 위 최초 발급 절차를 수행합니다.
+이전 프록시의 인증서 저장 형식은 사용하지 않으므로 최초 발급이 끝날 때까지 짧은 서비스 중단이 있습니다.
+DB 보존을 위해 `docker compose down -v`를 실행하지 않습니다.
+
+NGINX 설정 확인: `docker compose exec proxy nginx -t`.
+공식 참고: [NGINX WebSocket 프록시](https://nginx.org/en/docs/http/websocket.html),
+[Certbot webroot·갱신](https://eff-certbot.readthedocs.io/en/stable/using.html).
 
 ## 백업과 복원
 
