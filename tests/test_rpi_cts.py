@@ -117,6 +117,7 @@ def test_stale_events_are_distinct_from_invalid_events():
         queue.deadline()
     assert queue.model_ready() is True
     assert queue.model_ready() is False
+    assert queue.recover_idle() is False
     with pytest.raises(RuntimeError, match="invalid_event"):
         queue.begin_inference()
     assert queue.model_lost() is True

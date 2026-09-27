@@ -94,6 +94,7 @@ async def test_deadline_keeps_slot_until_inference_really_finishes():
     with pytest.raises(InternalError, match="LLM_TIMEOUT"):
         await runner.submit(request())
     assert queue.state == State.DRAINING_GENERATION and queue.active_requests == 1
+    assert queue.deadline() is False
     with pytest.raises(InternalError, match="LLM_BUSY"):
         await runner.submit(request())
     adapter.generate_gate.set()

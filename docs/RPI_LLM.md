@@ -17,6 +17,8 @@ B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
   the same runtime URL. Run llama-server with `--parallel 1` and a loopback bind.
 - The adapter admits one job and queues zero jobs. A second request receives
   `503 LLM_BUSY` and `Retry-After: 5` without waiting.
+- The [CTS state/action table](CTS.md) separates a timed-out active worker
+  from an uncertain finished worker and classifies every missing edge.
 - The model is checked with `/health`, `/props`, and `/v1/models`. The GGUF
   path, alias, context size, and one server slot must match the configuration.
   The raw server slot must also be idle before the adapter admits a new job.

@@ -36,14 +36,17 @@
 
 ## RPi 어댑터와 GPU 연구 패치 — 2026-09-28
 
-- `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 46개 통과,
-  전체 112개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
+- `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 54개 통과,
+  전체 120개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
   간선 없음·범위 제한, 단일 작업 큐, 취소·시간 초과 슬롯 유지,
   llama-server MockTransport, 인증된 내부 API, 서비스→DB 저장 흐름을 포함합니다.
   실제 작업에서만 시작·성공 로그를 남기는지, 입력 길이 상한,
   ASCII 서비스 토큰·Bearer 표기·응답 캐시 금지도 확인했습니다.
   느린 MockTransport로 readiness/slot 점검의 전체 마감과 런타임 호출의
   전체 마감, 추론 시작 뒤 시간 초과의 격리 경로도 확인했습니다.
+  [CTS 감사](CTS.md)는 테스트 수와 별도로 상태 7×행동 12의 84칸을
+  전이 15개, busy 4개, not ready 2개, stale 7개, invalid 56개로 분류하고
+  Walker가 5간선 안에서 전이 15개 모두에 도달함을 확인했습니다.
   Docker 프록시 4개는 이 실행에서 활성화하지 않았습니다.
 - 현재 llama-server 소스의 채팅 생성 경로와 입력 토큰 계산 경로는
   `oaicompat_chat_params_parse`를 공유합니다. `cache_prompt=false`에서는
