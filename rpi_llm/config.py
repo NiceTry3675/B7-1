@@ -21,8 +21,8 @@ class RPiSettings(BaseSettings):
     @field_validator("llm_service_token")
     @classmethod
     def validate_token(cls, value):
-        if len(value.encode()) < 32 or any(char.isspace() for char in value):
-            raise ValueError("LLM_SERVICE_TOKEN must be at least 32 bytes without whitespace")
+        if not value.isascii() or len(value) < 32 or any(char.isspace() for char in value):
+            raise ValueError("LLM_SERVICE_TOKEN must be 32+ ASCII bytes without whitespace")
         return value
 
     @field_validator("llm_model")

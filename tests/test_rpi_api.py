@@ -81,6 +81,11 @@ async def test_both_internal_routes_require_token_even_for_bad_body(api):
         assert response.json()["error"]["code"] == "LLM_UNAUTHORIZED"
         assert response.headers["WWW-Authenticate"] == "Bearer"
         assert response.headers["X-Request-ID"] == response.json()["request_id"]
+        assert response.headers["Cache-Control"] == "no-store"
+    raw = await client.get("/internal/v1/health", headers={"Authorization": "s" * 32})
+    assert raw.status_code == 401
+    lower = await client.get("/internal/v1/health", headers={"Authorization": "bearer " + "s" * 32})
+    assert lower.status_code == 200
     assert runtime.calls == 0
 
 
@@ -97,6 +102,7 @@ async def test_generate_preserves_request_id_and_rejects_invalid_input(api):
     response = await client.post("/internal/v1/generate", json=payload(), headers=headers)
     assert response.status_code == 200
     assert response.headers["X-Request-ID"] == "req_test"
+    assert response.headers["Cache-Control"] == "no-store"
     assert response.json()["answer"] == "답변" and response.json()["usage"] is None
     wrong = {**payload(), "model": "wrong"}
     assert (await client.post("/internal/v1/generate", json=wrong, headers=headers)).json()[

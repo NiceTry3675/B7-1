@@ -21,6 +21,17 @@ logger = logging.getLogger("rpi_llm")
 REQUEST_ID = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 
 
+def valid_service_token(authorization, expected):
+    scheme, separator, token = (authorization or "").partition(" ")
+    return (
+        separator == " "
+        and scheme.lower() == "bearer"
+        and bool(token)
+        and token.isascii()
+        and hmac.compare_digest(token, expected)
+    )
+
+
 def create_app(settings=None, adapter=None):
     settings = settings or RPiSettings()
     adapter = adapter or LlamaAdapter(settings)
@@ -50,14 +61,17 @@ def create_app(settings=None, adapter=None):
             supplied if REQUEST_ID.fullmatch(supplied) else "req_" + uuid4().hex
         )
         if request.url.path in {"/internal/v1/health", "/internal/v1/generate"}:
-            token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-            if not token or not hmac.compare_digest(token, settings.llm_service_token):
+            if not valid_service_token(
+                request.headers.get("Authorization"), settings.llm_service_token
+            ):
                 response = error_response(request, InternalError("LLM_UNAUTHORIZED"))
             else:
                 response = await call_next(request)
         else:
             response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
     def error_response(request, exc):
@@ -92,10 +106,7 @@ def create_app(settings=None, adapter=None):
         return error_response(request, InternalError("LLM_INTERNAL_ERROR"))
 
     def authenticate(authorization: str | None = Header(default=None)):
-        token = ""
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization.removeprefix("Bearer ")
-        if not token or not hmac.compare_digest(token, settings.llm_service_token):
+        if not valid_service_token(authorization, settings.llm_service_token):
             raise InternalError("LLM_UNAUTHORIZED")
 
     async def refresh_readiness():

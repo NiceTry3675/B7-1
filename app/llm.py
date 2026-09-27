@@ -109,7 +109,7 @@ class LLMClient:
         except ValueError:
             valid = False
         token = config.llm_service_token
-        if not valid or len(token.encode()) < 32 or any(c.isspace() for c in token):
+        if not valid or not token.isascii() or len(token) < 32 or any(c.isspace() for c in token):
             raise APIError("AI_CONFIG_ERROR")
 
     async def request(self, method, path, request_id, payload=None):

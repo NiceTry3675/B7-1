@@ -33,7 +33,8 @@ B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
 ## Configuration
 
 Create `.env` from `.env.example` locally. Do not commit `.env` or GGUF files.
-The two services use the same `LLM_SERVICE_TOKEN` (at least 32 bytes) and
+The two services use the same ASCII `LLM_SERVICE_TOKEN` (for example,
+`openssl rand -hex 32`, which encodes 32 random bytes) and
 `LLM_MODEL` alias. The cloud/backend sets `LLM_BASE_URL` to the private adapter
 address, without `/internal/v1`. The Raspberry Pi adapter reads:
 

@@ -113,3 +113,12 @@ def test_request_validator_rejects_invalid_shapes(changes):
 def test_rpi_configuration_rejects_unsafe_or_inconsistent_values(changes):
     with pytest.raises(ValidationError):
         settings(**changes)
+
+
+def test_service_token_must_fit_http_header(tmp_path):
+    with pytest.raises(ValidationError):
+        RPiSettings(
+            _env_file=None,
+            llm_service_token="한" * 11,
+            llm_model_path=tmp_path / "gemma.gguf",
+        )
