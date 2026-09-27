@@ -26,6 +26,17 @@ The full trace is outside this Codyssey checkout. The source chain above and
 the trace excerpt establish that the prior case reached the native opcode;
 they do not validate the new tile patch.
 
+`scripts.census_dot4x8` finds 40 source call sites in
+`mul_mat_vecq_funcs.glsl`, 14 in `mul_mmq_funcs.glsl`, and 1 in
+`flash_attn.comp`; there are no other `dotPacked4x8EXT` uses in this
+checkout's Vulkan shader sources. These are lexical source counts across
+conditional quant branches, not dynamic instruction counts. Run the census
+again after rebasing, since a new call-site file needs its own scope review:
+
+```bash
+.venv/bin/python -m scripts.census_dot4x8 --llama-dir /path/to/llama.cpp
+```
+
 ## Tile patches and exceptions
 
 `0002-v3dv-small-scalar-tile.patch` changes nonquant small scalar matmul.

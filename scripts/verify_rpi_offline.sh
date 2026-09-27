@@ -13,11 +13,11 @@ ruff_bin=${RUFF_BIN:-.venv/bin/ruff}
 "$python_bin" -m pytest -q \
   tests/test_rpi_cts.py tests/test_rpi_runner.py \
   tests/test_rpi_adapter.py tests/test_rpi_api.py tests/test_rpi_flow.py
-"$ruff_bin" check rpi_llm scripts/analyze_v3dv_tile.py \
+"$ruff_bin" check rpi_llm scripts/analyze_v3dv_tile.py scripts/census_dot4x8.py \
   scripts/apply_llama_patch.py scripts/apply_mesa_patch.py \
   scripts/patch_utils.py \
   scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py tests/test_rpi_*.py
-"$ruff_bin" format --check rpi_llm scripts/analyze_v3dv_tile.py \
+"$ruff_bin" format --check rpi_llm scripts/analyze_v3dv_tile.py scripts/census_dot4x8.py \
   scripts/apply_llama_patch.py \
   scripts/apply_mesa_patch.py scripts/patch_utils.py \
   scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py tests/test_rpi_*.py
