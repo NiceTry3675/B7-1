@@ -1,0 +1,56 @@
+From b13d13e11bc3f347cd59db0060e15c67bdff96e1 Mon Sep 17 00:00:00 2001
+From: JaeHoon Lee <dlwognsdc610@gmail.com>
+Date: Mon, 21 Sep 2026 15:08:30 +0900
+Subject: [PATCH] ggml: add broadcom architecture
+
+Let add broadcom-architecture v3d-7.1 and it's tile-size.
+
+Signed-off-by: JaeHoon Lee <dlwognsdc610@gmail.com>
+---
+ ggml/src/ggml-vulkan/ggml-vulkan.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index c815d4f..a502011 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -179,6 +179,7 @@ static constexpr vk::DeviceQueueCreateFlagBits eInternallySynchronizedKHR = vk::
+ static bool is_pow2(uint32_t x) { return x > 1 && (x & (x-1)) == 0; }
+ 
+ #define VK_VENDOR_ID_AMD 0x1002
++#define VK_VENDOR_ID_BRCM 0x14e4
+ #define VK_VENDOR_ID_APPLE 0x106b
+ #define VK_VENDOR_ID_INTEL 0x8086
+ #define VK_VENDOR_ID_NVIDIA 0x10de
+@@ -399,6 +400,7 @@ enum vk_device_architecture {
+     INTEL_XE2,
+     NVIDIA_PRE_TURING,
+     NVIDIA_TURING,
++    BRCM_VC7,
+ };
+ 
+ static vk_device_architecture get_device_architecture(const vk::PhysicalDevice& device) {
+@@ -517,6 +519,8 @@ static vk_device_architecture get_device_architecture(const vk::PhysicalDevice&
+                 return vk_device_architecture::NVIDIA_TURING;
+             }
+         }
++    } else if (props.vendorID == VK_VENDOR_ID_BRCM && strncmp(props.deviceName, "V3D 7.", 6) == 0) {
++        return vk_device_architecture::BRCM_VC7;
+     }
+     return vk_device_architecture::OTHER;
+ }
+@@ -5285,9 +5289,10 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             if (device->integer_dot_product) {
+                 const uint32_t subgroup_size_int = (device->vendor_id == VK_VENDOR_ID_INTEL && device->subgroup_size_control) ? device->subgroup_min_size : device->subgroup_size;
+                 const uint32_t wg_size_subgroup_int = (w == DMMV_WG_SIZE_SUBGROUP) ? subgroup_size_int : (subgroup_size_int * 4);
++                const uint32_t rm_q4_0_int = (device->architecture == vk_device_architecture::BRCM_VC7 && i == 0) ? 2 : rm_stdq_int;
+ 
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q2_0][i], "mul_mat_vec_q2_0_q8_1_f32", arr_dmmv_q2_0_q8_1_f32_len[reduc], arr_dmmv_q2_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {2*rm_kq_int, 1, 1}, {wg_size_subgroup_int, 2*rm_kq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+-                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_q8_1_f32", arr_dmmv_q4_0_q8_1_f32_len[reduc], arr_dmmv_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
++                ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_0][i], "mul_mat_vec_q4_0_q8_1_f32", arr_dmmv_q4_0_q8_1_f32_len[reduc], arr_dmmv_q4_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {rm_q4_0_int, 1, 1}, {wg_size_subgroup_int, rm_q4_0_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q4_1][i], "mul_mat_vec_q4_1_q8_1_f32", arr_dmmv_q4_1_q8_1_f32_len[reduc], arr_dmmv_q4_1_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q5_0][i], "mul_mat_vec_q5_0_q8_1_f32", arr_dmmv_q5_0_q8_1_f32_len[reduc], arr_dmmv_q5_0_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+                 ggml_vk_create_pipeline(device, device->pipeline_dequant_mul_mat_vec_q8_1_f32[w][GGML_TYPE_Q5_1][i], "mul_mat_vec_q5_1_q8_1_f32", arr_dmmv_q5_1_q8_1_f32_len[reduc], arr_dmmv_q5_1_q8_1_f32_data[reduc], "main", mul_mat_vec_num_bindings, sizeof(vk_mat_vec_push_constants), {1*rm_stdq_int, 1, 1}, {wg_size_subgroup_int, 1*rm_stdq_int, i+1}, 1, true, use_subgroups, subgroup_size_int);
+-- 
+2.47.3
+
