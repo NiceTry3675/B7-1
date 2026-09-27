@@ -155,6 +155,7 @@ RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
 RPi 오프라인 검증은 `bash scripts/verify_rpi_offline.sh`로 실행합니다. 테스트는 임시 DB와
 테스트 전용 LLM 응답을 사용하며, 실제 모델을 호출하지 않습니다.
 [CTS 상태·행동 표](docs/CTS.md)는 전체 테스트 수와 별도로 84개 조합의 전이·거절 조건을 보여줍니다.
+[전체 서비스 CTS](docs/SERVICE_CTS.md)는 Front·Backend 인증·Backend 턴·RPi를 따로 보여줍니다.
 검증 범위에는 두 사용자 격리, 만료·폐기 토큰, 동시 전송, 실패 재요청, 최근 문맥,
 내부 오류 매핑, HTTP 전체 시간 제한, 응답 유실, 재시작 후 보존, 화면 구성 등이 포함됩니다.
 

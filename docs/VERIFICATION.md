@@ -37,7 +37,7 @@
 ## RPi 어댑터와 GPU 연구 패치 — 2026-09-28
 
 - `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 54개 통과,
-  전체 120개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
+  전체 135개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
   간선 없음·범위 제한, 단일 작업 큐, 취소·시간 초과 슬롯 유지,
   llama-server MockTransport, 인증된 내부 API, 서비스→DB 저장 흐름을 포함합니다.
   실제 작업에서만 시작·성공 로그를 남기는지, 입력 길이 상한,
@@ -74,3 +74,20 @@
   토크나이저 파일이 아직 준비되지 않아 실행하지 않았습니다. 이 검사는
   텍스트 생성 없이 토큰 수만 요청합니다.
   순서와 명령은 [RPi 가이드](RPI_LLM.md#verification-order)에 있습니다.
+
+## Front·Backend CTS 확장 — 2026-09-28
+
+- `bash scripts/verify_service_offline.sh`: Front·Backend·RPi를 묶은
+  Mock 시험 69개 통과, 전체 135개 통과·4개 skip, Ruff 코드·포맷 검사 통과.
+  외부 HTTP와 실제 모델 요청은 사용하지 않았습니다.
+- [전체 CTS 감사](SERVICE_CTS.md): Front 126칸·66전이, Backend 인증
+  16칸·4전이, Backend 턴 32칸·8전이, RPi 84칸·15전이를 각각 분류했습니다.
+  합계 258칸·93전이이며, 범위별 Walker는 정해진 깊이 안에서 모든
+  간선에 도달했습니다. 이는 전체 pytest 테스트 수와 다른 수치입니다.
+- 실제 Controller 콜백에서 로그인·질문·실패·UUID 재시도를, SQLite에서
+  같은 UUID 중복·다른 UUID 처리 충돌·만료·폐기·늦은 결과 보존을
+  확인했습니다. 통합 시험은 Front→Backend→RPi Mock→DB→Front의
+  성공과 실패 복구를 한 흐름으로 확인했습니다.
+- 로그아웃 상태에서 오래된 대화 열기 콜백이 대화 ID를 남기던 경로를
+  차단하고, 잘못된 대화 ID 입력도 거절합니다. 실모델과 외부 배포 단계는
+  위 미실행 항목 그대로입니다.

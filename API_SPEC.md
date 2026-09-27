@@ -5,6 +5,7 @@
 - 대상: Gradio 프론트엔드, FastAPI 백엔드, SQLite, 라즈베리파이의 로컬 LLM
 - 기준: [프로젝트 요구사항](requirement.md), 2026-09-14 회의록, 이후 합의한 챗봇 방식·로컬 LLM 사용·팀 역할 분담
 - 서비스 API와 RPi 어댑터 API는 구현되어 있다. 실제 Gemma 실행·배포 검증은 별도 단계다.
+- Front·Backend·RPi의 상태·전이·간선 없는 칸과 오프라인 검증은 [서비스 CTS](docs/SERVICE_CTS.md)에 정리했다.
 
 ### 0.3 변경 사항
 
