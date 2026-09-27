@@ -13,7 +13,18 @@ def verify(before, action, session):
 
 
 async def test_front_success_failure_retry_and_logout(app, fake_llm):
-    controller = Controller(BackendClient("http://test", transport=httpx.ASGITransport(app=app)))
+    class ObservedController(Controller):
+        def __init__(self, api):
+            super().__init__(api)
+            self.reconcile_entries = []
+
+        async def reconcile(self, session, keep_notice=False):
+            self.reconcile_entries.append(project(session))
+            await super().reconcile(session, keep_notice)
+
+    controller = ObservedController(
+        BackendClient("http://test", transport=httpx.ASGITransport(app=app))
+    )
     session = Session()
     state = project(session)
     await controller.signup(session, "cts@example.com", "test-password123")
@@ -29,7 +40,7 @@ async def test_front_success_failure_retry_and_logout(app, fake_llm):
     assert controller.prepare_send(session, "두 번째 질문")
     state = verify(state, FrontAction.SEND, session)
     await controller.transmit(session)
-    assert FRONT_CTS.step(state, FrontAction.SEND_ERROR) == FrontState.UNKNOWN
+    assert controller.reconcile_entries[-1] == FRONT_CTS.step(state, FrontAction.SEND_ERROR)
     state = verify(FrontState.UNKNOWN, FrontAction.RECORD_FAILED, session)
     failed_id = session.pending_id
     fake_llm.error = None
@@ -104,3 +115,15 @@ async def test_signed_out_open_cannot_leave_a_conversation_id():
     await Controller(NoNetwork()).open_conversation(session, 12)
     assert project(session) == FrontState.SIGNED_OUT
     assert session.conversation_id is None
+
+
+async def test_bad_conversation_selection_keeps_the_front_state():
+    class NoNetwork:
+        async def pages(self, path, token):
+            raise AssertionError("invalid conversation ID must not reach the backend")
+
+    session = Session(token="token", conversation_id=1)
+    for cid in ("not-an-id", -1, 0):
+        await Controller(NoNetwork()).open_conversation(session, cid)
+        assert project(session) == FrontState.READY
+        assert session.conversation_id == 1

@@ -36,20 +36,30 @@ class FrontAction(StrEnum):
 
 def project(session):
     if not session.token:
-        if session.conversation_id or session.pending_id or session.sending:
+        if session.conversation_id is not None or any(
+            (session.pending_id, session.pending_question, session.pending_status, session.sending)
+        ):
             raise ValueError("signed-out session retained conversation state")
         return FrontState.SIGNED_OUT
-    if not session.conversation_id:
-        if session.pending_id or session.sending:
+    if session.conversation_id is None:
+        if any(
+            (session.pending_id, session.pending_question, session.pending_status, session.sending)
+        ):
             raise ValueError("pending question has no conversation")
         return FrontState.CHOOSING
+    if not isinstance(session.conversation_id, int) or session.conversation_id <= 0:
+        raise ValueError("invalid conversation ID")
     if session.sending:
-        if not session.pending_id:
-            raise ValueError("sending without a question ID")
+        if (
+            not session.pending_id
+            or not session.pending_question
+            or session.pending_status not in {"processing", "unknown"}
+        ):
+            raise ValueError("sending without a valid pending question")
         return FrontState.SENDING
     if not session.pending_id:
-        if session.pending_status:
-            raise ValueError("pending status has no question ID")
+        if session.pending_status or session.pending_question:
+            raise ValueError("pending fields have no question ID")
         return FrontState.READY
     states = {
         "processing": FrontState.PROCESSING,
@@ -58,6 +68,8 @@ def project(session):
     }
     if session.pending_status not in states:
         raise ValueError("unknown pending status")
+    if not session.pending_question:
+        raise ValueError("pending question has no content")
     return states[session.pending_status]
 
 

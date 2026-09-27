@@ -84,8 +84,29 @@ def test_front_projection_rejects_ambiguous_field_combinations():
     assert project(Session()) == FrontState.SIGNED_OUT
     assert project(Session(token="t")) == FrontState.CHOOSING
     assert project(Session(token="t", conversation_id=1)) == FrontState.READY
+    assert (
+        project(
+            Session(
+                token="t",
+                conversation_id=1,
+                pending_id="id",
+                pending_question="question",
+                pending_status="unknown",
+                sending=True,
+            )
+        )
+        == FrontState.SENDING
+    )
     with pytest.raises(ValueError, match="signed-out"):
         project(Session(conversation_id=1))
+    with pytest.raises(ValueError, match="signed-out"):
+        project(Session(pending_status="unknown"))
+    with pytest.raises(ValueError, match="invalid conversation"):
+        project(Session(token="t", conversation_id=0))
+    with pytest.raises(ValueError, match="pending fields"):
+        project(Session(token="t", conversation_id=1, pending_question="orphan"))
+    with pytest.raises(ValueError, match="sending"):
+        project(Session(token="t", conversation_id=1, pending_id="id", sending=True))
     with pytest.raises(ValueError, match="unknown pending"):
         project(Session(token="t", conversation_id=1, pending_id="id", pending_status="x"))
 

@@ -151,8 +151,16 @@ class Controller:
             return
         if session.sending or not cid:
             return
+        try:
+            selected_id = int(cid)
+        except (TypeError, ValueError):
+            session.notice = "올바른 대화를 선택해 주세요."
+            return
+        if selected_id <= 0:
+            session.notice = "올바른 대화를 선택해 주세요."
+            return
         session.epoch += 1
-        session.conversation_id = int(cid)
+        session.conversation_id = selected_id
         session.turns = []
         session.clear_pending()
         await self.reconcile(session)
