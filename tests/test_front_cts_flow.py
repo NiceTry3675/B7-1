@@ -59,6 +59,8 @@ async def test_front_unknown_result_reuses_original_question_id():
     await controller.transmit(session)
     state = verify(state, FrontAction.SEND_ERROR, session)
     assert state == FrontState.UNKNOWN
+    assert not controller.prepare_send(session, "새 질문")
+    assert project(session) == FrontState.UNKNOWN
     assert await controller.retry(session, "changed")
     verify(state, FrontAction.RETRY_UNKNOWN, session)
     assert session.pending_id == original_id and session.pending_question == "original"
@@ -84,6 +86,8 @@ async def test_front_record_poll_and_switch_conversation():
     state = project(session)
     await controller.reconcile(session)
     state = verify(state, FrontAction.RECORD_PROCESSING, session)
+    assert not controller.prepare_send(session, "새 질문")
+    assert project(session) == FrontState.PROCESSING
     api.turn = {**api.turn, "status": "failed", "error_code": "AI_BUSY"}
     await controller.reconcile(session)
     state = verify(state, FrontAction.RECORD_FAILED, session)

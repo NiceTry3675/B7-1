@@ -45,6 +45,9 @@ def verify(machine, before, action, after):
 def test_auth_issue_use_revoke_and_expiry(tmp_path):
     db, uid = database(tmp_path)
     assert project_auth(None) == AuthState.ABSENT
+    with pytest.raises(APIError, match="AUTH_REQUIRED"):
+        db.authenticate("missing-hash")
+    assert AUTH_CTS.no_edge(AuthState.ABSENT, AuthAction.USE) == NoEdgePolicy.AUTH_REQUIRED
     db.new_session(uid, "active-hash", 3600)
     row = session_row(db, "active-hash")
     state = project_auth(row)
@@ -92,6 +95,9 @@ def test_turn_create_duplicate_complete_fail_and_late_result(tmp_path):
     verify(TURN_CTS, TurnState.PROCESSING, TurnAction.AI_SUCCESS, state)
     replay, _, _ = db.begin_turn(uid, cid, tid, "질문")
     verify(TURN_CTS, state, TurnAction.REPLAY_SAME, project_turn(replay))
+    with pytest.raises(APIError, match="MESSAGE_ID_CONFLICT"):
+        db.begin_turn(uid, cid, tid, "완료 후 다른 질문")
+    assert TURN_CTS.no_edge(state, TurnAction.REPLAY_CHANGED) == NoEdgePolicy.CONFLICT
     late = db.finish_turn(cid, tid, error="AI_TIMEOUT")
     verify(TURN_CTS, state, TurnAction.LATE_RESULT, project_turn(late))
 
@@ -101,8 +107,12 @@ def test_turn_create_duplicate_complete_fail_and_late_result(tmp_path):
     verify(TURN_CTS, TurnState.PROCESSING, TurnAction.AI_FAILURE, project_turn(failed))
     with pytest.raises(APIError, match="AI_BUSY"):
         db.begin_turn(uid, cid, failed_id, "실패 질문")
+    verify(TURN_CTS, TurnState.FAILED, TurnAction.REPLAY_SAME, project_turn(failed))
+    with pytest.raises(APIError, match="MESSAGE_ID_CONFLICT"):
+        db.begin_turn(uid, cid, failed_id, "실패 후 다른 질문")
     late = db.finish_turn(cid, failed_id, answer="늦은 답")
-    assert project_turn(late) == TurnState.FAILED and late["answer"] is None
+    verify(TURN_CTS, TurnState.FAILED, TurnAction.LATE_RESULT, project_turn(late))
+    assert late["answer"] is None
 
     stale_id = str(uuid4())
     db.begin_turn(uid, cid, stale_id, "중단 질문")
