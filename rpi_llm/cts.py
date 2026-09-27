@@ -39,6 +39,7 @@ EDGES = (
     Edge(State.READY, Action.CLAIM, State.COUNTING),
     Edge(State.COUNTING, Action.CONTEXT_VALID, State.GENERATING),
     Edge(State.COUNTING, Action.CONTEXT_REJECTED, State.READY),
+    Edge(State.COUNTING, Action.DEADLINE, State.QUARANTINED),
     Edge(State.GENERATING, Action.INFERENCE_FINISHED, State.READY),
     Edge(State.GENERATING, Action.INFERENCE_UNKNOWN, State.QUARANTINED),
     Edge(State.GENERATING, Action.DEADLINE, State.QUARANTINED),
