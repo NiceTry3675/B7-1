@@ -10,6 +10,39 @@ from rpi_llm.errors import InternalError
 from rpi_llm.queue import ComputeJobQueue
 from rpi_llm.schemas import GenerationRequest
 
+EXPECTED_TRANSITIONS = {
+    (State.NOT_READY, Action.MODEL_READY): State.READY,
+    (State.READY, Action.MODEL_LOST): State.NOT_READY,
+    (State.READY, Action.CLAIM): State.COUNTING,
+    (State.COUNTING, Action.CONTEXT_VALID): State.GENERATING,
+    (State.COUNTING, Action.CONTEXT_REJECTED): State.READY,
+    (State.COUNTING, Action.COUNT_FAILED): State.NOT_READY,
+    (State.COUNTING, Action.DEADLINE): State.DRAINING_COUNT,
+    (State.GENERATING, Action.INFERENCE_FINISHED): State.READY,
+    (State.GENERATING, Action.INFERENCE_UNKNOWN): State.QUARANTINED,
+    (State.GENERATING, Action.DEADLINE): State.DRAINING_GENERATION,
+    (State.DRAINING_COUNT, Action.LATE_FINISHED): State.READY,
+    (State.DRAINING_COUNT, Action.COUNT_FAILED): State.NOT_READY,
+    (State.DRAINING_GENERATION, Action.LATE_FINISHED): State.READY,
+    (State.DRAINING_GENERATION, Action.LATE_UNKNOWN): State.QUARANTINED,
+    (State.QUARANTINED, Action.RUNTIME_IDLE): State.READY,
+}
+EXPECTED_SPECIAL_NO_EDGES = {
+    (State.NOT_READY, Action.CLAIM): NoEdgePolicy.NOT_READY,
+    (State.QUARANTINED, Action.CLAIM): NoEdgePolicy.NOT_READY,
+    (State.COUNTING, Action.CLAIM): NoEdgePolicy.BUSY,
+    (State.GENERATING, Action.CLAIM): NoEdgePolicy.BUSY,
+    (State.DRAINING_COUNT, Action.CLAIM): NoEdgePolicy.BUSY,
+    (State.DRAINING_GENERATION, Action.CLAIM): NoEdgePolicy.BUSY,
+    (State.NOT_READY, Action.MODEL_LOST): NoEdgePolicy.STALE,
+    (State.READY, Action.MODEL_READY): NoEdgePolicy.STALE,
+    (State.NOT_READY, Action.RUNTIME_IDLE): NoEdgePolicy.STALE,
+    (State.READY, Action.RUNTIME_IDLE): NoEdgePolicy.STALE,
+    (State.DRAINING_COUNT, Action.CONTEXT_VALID): NoEdgePolicy.STALE,
+    (State.DRAINING_COUNT, Action.DEADLINE): NoEdgePolicy.STALE,
+    (State.DRAINING_GENERATION, Action.DEADLINE): NoEdgePolicy.STALE,
+}
+
 
 def settings(**changes):
     return RPiSettings(
@@ -50,6 +83,10 @@ def test_every_state_action_pair_has_one_explicit_outcome():
         target = SLOT_CTS.step(state, action)
         no_edge = SLOT_CTS.no_edge(state, action)
         assert (target is None) != (no_edge is None)
+        if (state, action) in EXPECTED_TRANSITIONS:
+            assert target == EXPECTED_TRANSITIONS[state, action]
+        else:
+            assert no_edge == EXPECTED_SPECIAL_NO_EDGES.get((state, action), NoEdgePolicy.INVALID)
         outcomes["edge" if target is not None else no_edge] += 1
     assert len(State) * len(Action) == 84
     assert outcomes == {
