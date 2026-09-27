@@ -1,7 +1,7 @@
 import hmac
 import logging
 import re
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, Request
@@ -29,14 +29,15 @@ def create_app(settings=None, adapter=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        try:
-            with RuntimeLease(settings.llm_runtime_url):
-                if await adapter.probe_ready():
+        with ExitStack() as leases:
+            try:
+                leases.enter_context(RuntimeLease(settings.llm_runtime_url))
+                if await adapter.is_idle():
                     queue.model_ready()
                     logger.info("model_ready model=%s", settings.llm_model)
                 yield
-        finally:
-            await adapter.close()
+            finally:
+                await adapter.close()
 
     app = FastAPI(title="Raspberry Pi internal LLM", lifespan=lifespan)
     app.state.queue = queue
@@ -99,10 +100,10 @@ def create_app(settings=None, adapter=None):
 
     async def refresh_readiness():
         if queue.state == State.NOT_READY:
-            if await adapter.probe_ready():
+            if await adapter.is_idle():
                 queue.model_ready()
         elif queue.state == State.READY:
-            if not await adapter.probe_ready():
+            if not await adapter.is_idle():
                 queue.model_lost()
         elif queue.state == State.QUARANTINED and queue.active_task is None:
             if await adapter.is_idle():

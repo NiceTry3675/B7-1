@@ -19,6 +19,7 @@ B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
   `503 LLM_BUSY` and `Retry-After: 5` without waiting.
 - The model is checked with `/health`, `/props`, and `/v1/models`. The GGUF
   path, alias, context size, and one server slot must match the configuration.
+  The raw server slot must also be idle before the adapter admits a new job.
 - Token counting uses llama-server's
   `/v1/chat/completions/input_tokens` with the same system/history messages as
   generation. Input plus requested output must fit the configured context.

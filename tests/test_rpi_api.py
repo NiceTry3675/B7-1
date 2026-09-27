@@ -13,7 +13,7 @@ from rpi_llm.main import create_app
 class FakeRuntime:
     def __init__(self):
         self.ready = True
-        self.idle = False
+        self.idle = True
         self.uncertain = False
         self.gate = None
         self.started = asyncio.Event()
@@ -34,6 +34,7 @@ class FakeRuntime:
         if self.gate:
             await self.gate.wait()
         if self.uncertain:
+            self.idle = False
             raise RuntimeUncertain()
         return SimpleNamespace(answer="답변", finish_reason="stop", usage=None)
 
@@ -136,6 +137,18 @@ async def test_uncertain_runtime_stays_unready_until_idle_verified(api):
     assert response.json()["error"]["code"] == "LLM_INTERNAL_ERROR"
     assert app.state.queue.state == "quarantined"
     assert (await client.get("/internal/v1/health", headers=headers)).status_code == 503
+    runtime.idle = True
+    assert (await client.get("/internal/v1/health", headers=headers)).status_code == 200
+
+
+async def test_external_runtime_activity_cannot_be_queued_by_adapter(api):
+    client, runtime, _ = api
+    headers = {"Authorization": "Bearer " + "s" * 32}
+    runtime.idle = False
+    assert (await client.get("/internal/v1/health", headers=headers)).status_code == 503
+    response = await client.post("/internal/v1/generate", json=payload(), headers=headers)
+    assert response.status_code == 503
+    assert runtime.calls == 0
     runtime.idle = True
     assert (await client.get("/internal/v1/health", headers=headers)).status_code == 200
 
