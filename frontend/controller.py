@@ -146,6 +146,9 @@ class Controller:
                     )
 
     async def open_conversation(self, session, cid):
+        if not session.token:
+            session.notice = "로그인 후 대화를 선택해 주세요."
+            return
         if session.sending or not cid:
             return
         session.epoch += 1
