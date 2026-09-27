@@ -124,11 +124,15 @@ git -C /path/to/mesa diff --check
 ```
 
 After the operator finishes the Gemma build and starts llama-server, check the
-private adapter and backend link. The second command performs one real model
-request and is intentionally gated by `--run`:
+private adapter and backend link. On the Pi, provide the same local tokenizer
+files used by the backend in `LLM_TOKENIZER_PATH` and compare the Transformers
+chat template with llama-server's exact input-token count before generating. The
+last command performs one real model request and is intentionally gated by
+`--run`:
 
 ```bash
 .venv/bin/python -m scripts.check_llm
+.venv/bin/python -m scripts.check_tokenizer_match --run
 .venv/bin/python -m scripts.check_rpi_generation --run
 ```
 

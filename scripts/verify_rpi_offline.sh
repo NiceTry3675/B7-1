@@ -16,9 +16,11 @@ ruff_bin=${RUFF_BIN:-.venv/bin/ruff}
 "$ruff_bin" check rpi_llm scripts/analyze_v3dv_tile.py scripts/census_dot4x8.py \
   scripts/apply_llama_patch.py scripts/apply_mesa_patch.py \
   scripts/patch_utils.py \
-  scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py tests/test_rpi_*.py
+  scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py \
+  scripts/check_tokenizer_match.py tests/test_rpi_*.py
 "$ruff_bin" format --check rpi_llm scripts/analyze_v3dv_tile.py scripts/census_dot4x8.py \
   scripts/apply_llama_patch.py \
   scripts/apply_mesa_patch.py scripts/patch_utils.py \
-  scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py tests/test_rpi_*.py
+  scripts/rpi_llama_adapter.py scripts/check_rpi_generation.py \
+  scripts/check_tokenizer_match.py tests/test_rpi_*.py
 "$python_bin" -m pytest -q
