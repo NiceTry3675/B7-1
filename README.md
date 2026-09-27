@@ -154,6 +154,8 @@ RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
 
 RPi 오프라인 검증은 `bash scripts/verify_rpi_offline.sh`로 실행합니다. 테스트는 임시 DB와
 테스트 전용 LLM 응답을 사용하며, 실제 모델을 호출하지 않습니다.
+[RPi5 CPU 실서버 검증 기록](docs/VERIFICATION.md#rpi5-실제-cpu-서버--2026-09-28)은
+실제 Gemma 생성과 Front→Backend→RPi→SQLite 흐름을 별도로 확인한 결과입니다.
 [CTS 상태·행동 표](docs/CTS.md)는 전체 테스트 수와 별도로 84개 조합의 전이·거절 조건을 보여줍니다.
 [전체 서비스 CTS](docs/SERVICE_CTS.md)는 Front·Backend 인증·Backend 턴·RPi를 따로 보여줍니다.
 검증 범위에는 두 사용자 격리, 만료·폐기 토큰, 동시 전송, 실패 재요청, 최근 문맥,

@@ -116,5 +116,7 @@ bash scripts/verify_service_offline.sh
 **258칸의 분류·93개 간선의 도달성**은 모델 검사다. Front/Backend의
 실제 콜백과 SQLite 전이는 별도 Mock 시험으로 확인했다. 모델 검사만으로
 실제 Gemma 응답, GPU 실행, 외부 HTTPS 접속까지 검증했다고 보지 않는다.
+[RPi5 CPU 실서버 검증](VERIFICATION.md#rpi5-실제-cpu-서버--2026-09-28)은
+모델 검사와 별도로 기록했다.
 [RPi 슬롯 내부 CTS](CTS.md)와 [실모델 후속 순서](RPI_LLM.md#verification-order)는
 각각 따로 열 수 있다.

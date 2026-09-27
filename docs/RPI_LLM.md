@@ -10,7 +10,7 @@ Vulkan patch is a separate reviewable file for a llama.cpp checkout.
 ```text
 B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
                                       -> loopback llama-server :8080
-                                      -> Gemma 3 1B GGUF on RPi5 V3DV
+                                      -> Gemma 3 1B GGUF on RPi5 CPU
 ```
 
 - Run one adapter process. A Linux process lease rejects a second adapter for
@@ -22,6 +22,8 @@ B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
 - The model is checked with `/health`, `/props`, and `/v1/models`. The GGUF
   path, alias, context size, and one server slot must match the configuration.
   The raw server slot must also be idle before the adapter admits a new job.
+  `/slots` can omit `id_task` before the first job or retain an earlier task ID;
+  `is_processing=false` is the idle signal.
 - Token counting uses llama-server's
   `/v1/chat/completions/input_tokens` with the same system/history messages as
   generation. Input plus requested output must fit the configured context.
@@ -63,11 +65,17 @@ dependency of this command. The operator starts the model process separately.
 Keep the raw port on loopback and use the service token as its API key.
 
 ```bash
+(
+umask 077
+llm_api_key_file="$(mktemp)"
+trap 'rm -f "$llm_api_key_file"' EXIT
+printf '%s\n' "$LLM_SERVICE_TOKEN" > "$llm_api_key_file"
 llama-server --model "$LLM_MODEL_PATH" --alias "$LLM_MODEL" \
   --ctx-size "$LLM_CONTEXT_TOKENS" --parallel 1 \
   --gpu-layers 0 \
-  --host 127.0.0.1 --port 8080 --api-key "$LLM_SERVICE_TOKEN" \
-  --no-cache-prompt --offline
+  --host 127.0.0.1 --port 8080 --api-key-file "$llm_api_key_file" \
+  --no-cache-prompt --slots --offline
+)
 ```
 
 With that server ready, start only the adapter:
@@ -80,6 +88,9 @@ Bind to a VPN interface only when the private route is configured. Do not
 publish the raw llama-server port. The backend still needs its local tokenizer
 files and matching Gemma chat template for `ChatTokenCounter`; the adapter
 rechecks the exact token count before inference.
+The [local CPU server check](VERIFICATION.md#rpi5-실제-cpu-서버--2026-09-28) used port
+18080 because port 8080 was occupied on this Pi; set `LLM_RUNTIME_URL` to the
+same loopback port as the server.
 
 ## Patch provenance
 

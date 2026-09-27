@@ -29,15 +29,16 @@
 
 - 백엔드·프론트 이미지를 포함한 전체 Compose 배포는 미검증입니다.
 - 클라우드·공인 도메인 정보가 없어 외부 HTTPS 배포와 실제 인증 기관의 발급·갱신은 수행하지 않았습니다.
-- 실제 라즈베리파이 내부 API, 토큰·모델 별칭, 토크나이저/템플릿 일치 여부는 미검증입니다.
-- 로컬 모델 구현·성능·품질·전체 추론 슬롯·실제 중단 동작은 요청에 따라 제외했습니다.
+- 라즈베리파이 내부 API와 모델 별칭의 로컬 CPU 검증은 아래 2026-09-28
+  기록에 있습니다. 배포용 토큰·외부 연결과 토크나이저/템플릿 일치는 미검증입니다.
+- 로컬 모델의 장시간 성능·품질, GPU 실행, 실제 중단·재시작 복구는 미검증입니다.
 
 테스트 대체 응답은 `tests/`에서만 사용하며 제품 실행 경로에 모의 답변 모드는 없습니다.
 
 ## RPi 어댑터와 GPU 연구 패치 — 2026-09-28
 
-- `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 54개 통과,
-  전체 135개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
+- `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 55개 통과,
+  전체 136개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
   간선 없음·범위 제한, 단일 작업 큐, 취소·시간 초과 슬롯 유지,
   llama-server MockTransport, 인증된 내부 API, 서비스→DB 저장 흐름을 포함합니다.
   실제 작업에서만 시작·성공 로그를 남기는지, 입력 길이 상한,
@@ -67,18 +68,16 @@
   컴파일 명령에서 `-O0`로, Mesa `vir_register_allocate.c` translation unit은
   기존 origin-main build 명령으로 각각 컴파일했습니다. 두 빌드 모두
   바이너리 링크나 모델·GPU 실행 검증은 아닙니다.
-- 평가용 CPU Gemma 추론, 실제 llama-server 준비·복구, GPU shader
-  correctness·성능, 외부 HTTPS 서비스는 이 기록에서 미실행입니다.
-  `scripts.check_tokenizer_match --run`은 동일한 로컬 템플릿 입력을
-  Transformers와 llama-server에서 비교하도록 준비했지만 모델 서버와
-  토크나이저 파일이 아직 준비되지 않아 실행하지 않았습니다. 이 검사는
-  텍스트 생성 없이 토큰 수만 요청합니다.
-  순서와 명령은 [RPi 가이드](RPI_LLM.md#verification-order)에 있습니다.
+- CPU Gemma·llama-server 스모크 결과는 아래 실제 서버 기록에 있습니다.
+  GPU shader correctness·성능, 외부 HTTPS, 서버 재시작 복구는 미실행입니다.
+  `scripts.check_tokenizer_match --run`은 로컬 Transformers 토크나이저
+  파일이 없어 실행하지 않았습니다. 이 검사는 텍스트 생성 없이 토큰 수만
+  비교합니다. 순서와 명령은 [RPi 가이드](RPI_LLM.md#verification-order)에 있습니다.
 
 ## Front·Backend CTS 확장 — 2026-09-28
 
 - `bash scripts/verify_service_offline.sh`: Front·Backend·RPi를 묶은
-  Mock 시험 69개 통과, 전체 135개 통과·4개 skip, Ruff 코드·포맷 검사 통과.
+  Mock 시험 70개 통과, 전체 136개 통과·4개 skip, Ruff 코드·포맷 검사 통과.
   외부 HTTP와 실제 모델 요청은 사용하지 않았습니다.
 - [전체 CTS 감사](SERVICE_CTS.md): Front 126칸·66전이, Backend 인증
   16칸·4전이, Backend 턴 32칸·8전이, RPi 84칸·15전이를 각각 분류했습니다.
@@ -89,5 +88,27 @@
   확인했습니다. 통합 시험은 Front→Backend→RPi Mock→DB→Front의
   성공과 실패 복구를 한 흐름으로 확인했습니다.
 - 로그아웃 상태에서 오래된 대화 열기 콜백이 대화 ID를 남기던 경로를
-  차단하고, 잘못된 대화 ID 입력도 거절합니다. 실모델과 외부 배포 단계는
-  위 미실행 항목 그대로입니다.
+  차단하고, 잘못된 대화 ID 입력도 거절합니다. 실제 CPU 모델 검증은 아래에
+  있으며 외부 배포는 아직 검증하지 않았습니다.
+
+## RPi5 실제 CPU 서버 — 2026-09-28
+
+- 별도 llama.cpp `b13d13e` 작업트리에서 `GGML_VULKAN=OFF`로
+  `llama-server`를 빌드했습니다. Gemma 3 1B Q4_0 GGUF를
+  `--gpu-layers 0 --ctx-size 4096 --parallel 1`로 loopback에서 실행했습니다.
+  시험용 서비스 토큰은 일회용 파일로 전달하고 종료 후 서버·어댑터
+  프로세스를 정리했습니다. 배포용 토큰은 사용하지 않았습니다.
+- 실제 서버의 `/health`, `/props`, `/v1/models`, `/slots`, 입력 토큰
+  계산이 통과했습니다. 초기 유휴 슬롯의 `id_task`가 빠져 있어 어댑터가
+  503을 반환하던 문제를 수정했습니다. `is_processing=false`와 모델·슬롯
+  조건으로 준비를 판정하며, 작업 완료 후에도 준비 상태로 복귀했습니다.
+- 인증 없는 어댑터 요청은 `401 LLM_UNAUTHORIZED`, `scripts.check_llm`은
+  ready, `scripts.check_rpi_generation --run`은 실제 한국어 답변을
+  반환했습니다. 동시 요청에서는 첫 생성 중 두 번째가 `503 LLM_BUSY`,
+  첫 번째가 `200`으로 끝난 뒤 active 0으로 복귀했습니다.
+- 실제 Front Controller→FastAPI→RPi 어댑터→CPU 모델→SQLite 흐름에서
+  질문과 답변의 `completed` 저장, Front `READY` 복귀를 확인했습니다.
+  이 시험만 토큰 계산에 llama-server의 실제 입력 토큰 API를 주입했습니다.
+  제품 경로의 Transformers `ChatTokenCounter`와 서버 템플릿의 일치 여부는
+  로컬 토크나이저 파일이 없어 남아 있습니다. 외부 HTTPS·GPU·재시작 복구도
+  이 실행으로 검증하지 않았습니다.
