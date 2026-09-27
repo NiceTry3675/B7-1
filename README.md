@@ -13,8 +13,10 @@
 - Gradio 사용자별 상태, 모든 기록 페이지 조회, 결과 유실 복구, 수동 재시도, 중복 전송 차단
 - Docker Compose, NGINX HTTPS·Certbot 인증서 관리, 영속 볼륨, 온라인 백업, CI와 자동 테스트
 
-라즈베리파이 내부 API 어댑터와 BRCM Vulkan 패치는 이 저장소에 포함했습니다.
+라즈베리파이 내부 API 어댑터와 BRCM/V3DV Vulkan·Mesa 연구 패치는 이 저장소에 포함했습니다.
 **llama.cpp 프로세스 제어, 모델 다운로드·로딩·실제 추론은 별도 작업입니다.**
+평가용 실제 Gemma 실행은 CPU 경로로 계획했고, GPU 패치의 정적 근거와 한계는
+[V3DV tile 분석](docs/V3DV_TILE_ANALYSIS.md)에 적었습니다.
 외부 생성형 AI로 전환하거나 가짜 답변을 반환하지 않습니다. 연결 설정이 없으면 질문이
 `failed / AI_CONFIG_ERROR`로 저장됩니다. 계정·대화·기록 기능은 사용할 수 있습니다.
 
@@ -69,7 +71,7 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
 | `app/llm.py` | 내부 HTTP 계약, 토큰 계산, 문맥 자르기, 오류 변환 |
 | `rpi_llm/` | 인증된 내부 API, CTS 상태 전이, 작업 큐, llama-server HTTP 변환 |
 | `scripts/rpi_llama_adapter.py` | 별도 RPi 어댑터 실행. llama-server를 시작하거나 중단하지 않음 |
-| `patches/llama.cpp/` | 기존 BRCM/V3DV Vulkan 커밋의 독립 적용 패치 |
+| `patches/llama.cpp/`, `patches/mesa/` | BRCM/V3DV tile 및 Mesa RA 진단의 독립 적용 패치 |
 | `frontend/main.py` | Gradio 화면과 이벤트 |
 | `frontend/controller.py` | 사용자별 상태, 응답 유실 확인, 재시도 |
 | `frontend/client.py` | 사용자별 Bearer 헤더, 전체 HTTP 제한 |

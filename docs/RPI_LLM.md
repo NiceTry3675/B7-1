@@ -47,13 +47,15 @@ address, without `/internal/v1`. The Raspberry Pi adapter reads:
 | `LLM_RUNTIME_TIMEOUT_SECONDS` | Runtime HTTP timeout, initially 130 |
 | `LLM_MAX_CONCURRENCY` | Must be 1 |
 
-Use a server build from the patched llama.cpp checkout. A sample launch shape
-is below; the operator chooses the final GPU options and runs it separately.
+For the chatbot's CPU run, use a locally built llama-server and
+`--gpu-layers 0`. The GPU patches are separate research artifacts, not a
+dependency of this command. The operator starts the model process separately.
 Keep the raw port on loopback and use the service token as its API key.
 
 ```bash
 llama-server --model "$LLM_MODEL_PATH" --alias "$LLM_MODEL" \
   --ctx-size "$LLM_CONTEXT_TOKENS" --parallel 1 \
+  --gpu-layers 0 \
   --host 127.0.0.1 --port 8080 --api-key "$LLM_SERVICE_TOKEN" \
   --no-cache-prompt --offline
 ```
@@ -71,13 +73,16 @@ rechecks the exact token count before inference.
 
 ## Patch provenance
 
-`patches/llama.cpp/0001-ggml-add-broadcom-architecture.patch` carries local
-llama.cpp commit `b13d13e` against base `1f368f3`. It detects V3D 7.x and
-changes only Broadcom Q4_0 single-token integer-dot matvec to two output rows
-per subgroup. It does not include the separate uncommitted Vulkan barrier edit
-in the working llama.cpp tree. `scripts.apply_llama_patch` does a dry run by
-default, checks the patch digest, refuses dirty target source, and needs
-`--apply` to write a different checkout. It never commits or pushes there.
+`patches/llama.cpp/0001-*` carries local llama.cpp commit `b13d13e` against
+base `1f368f3`. It detects V3D 7.x and changes only Broadcom Q4_0
+single-token integer-dot matvec to two output rows per subgroup. `0002-*`
+is the separate VC7 small scalar tile candidate. The Mesa V3D patch under
+`patches/mesa/` adds pre-spill RA diagnostics. Their exact scope and tile
+arithmetic are in [V3DV tile analysis](V3DV_TILE_ANALYSIS.md). None includes
+the separate uncommitted Vulkan barrier edit in the original llama.cpp tree.
+The patch scripts do a dry run by default, check SHA-256 digests, refuse dirty
+target source, and need `--apply` to write another checkout. They never commit
+or push there.
 
 The earlier local RPi5 record in `docs/evidence/gemma-q4_0-brcm-summary.json`
 reports 9/9 shape checks and four 20/20 repeated warm comparisons. Its short
@@ -100,8 +105,12 @@ is read-only. The second is an explicit local source change, if needed:
 
 ```bash
 .venv/bin/python -m scripts.apply_llama_patch --llama-dir /path/to/llama.cpp
+.venv/bin/python -m scripts.apply_mesa_patch --mesa-dir /path/to/mesa
+# Only in isolated checkouts, after inspecting the patches:
 .venv/bin/python -m scripts.apply_llama_patch --llama-dir /path/to/llama.cpp --apply
+.venv/bin/python -m scripts.apply_mesa_patch --mesa-dir /path/to/mesa --apply
 git -C /path/to/llama.cpp diff --check
+git -C /path/to/mesa diff --check
 ```
 
 After the operator finishes the Gemma build and starts llama-server, check the
