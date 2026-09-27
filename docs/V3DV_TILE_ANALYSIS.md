@@ -41,6 +41,11 @@ before: 32 vec2 = 64 FP32 accumulator values per lane
 after:  16 vec2 = 32 FP32 accumulator values per lane
 ```
 
+`python -m scripts.analyze_v3dv_tile` enumerates every lane, warp, and output
+coordinate using these shader formulas. It confirms 1,024 unique cells in the
+patched 32×32 tile, each written once, and B row indices at most 31. It is a
+source-level arithmetic check, not a shader execution.
+
 The V3D 7.x two-thread physical RF budget in Mesa is 64 registers. The old
 accumulator count alone reaches that number; addresses, caches, and loop state
 need registers too. Halving the source accumulator count creates headroom,
