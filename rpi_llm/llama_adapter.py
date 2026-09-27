@@ -70,7 +70,6 @@ class LlamaAdapter:
                     and isinstance(slots, list)
                     and len(slots) == 1
                     and slots[0].get("is_processing") is False
-                    and slots[0].get("id_task") == -1
                 )
         except (TimeoutError, httpx.HTTPError, ValueError, TypeError, AttributeError):
             return False

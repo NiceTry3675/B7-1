@@ -60,7 +60,7 @@ def runtime(settings, *, slots=None, answer="  두 번째 답변  "):
             return httpx.Response(200, json={"data": [{"id": "local-advisor"}]})
         if req.url.path == "/slots":
             return httpx.Response(
-                200, json=slots if slots is not None else [{"is_processing": False, "id_task": -1}]
+                200, json=slots if slots is not None else [{"is_processing": False}]
             )
         if req.url.path == "/v1/chat/completions/input_tokens":
             return httpx.Response(200, json={"input_tokens": 20})
@@ -116,6 +116,14 @@ async def test_probe_rejects_busy_slot_and_wrong_model(tmp_path):
     adapter, _ = runtime(config)
     assert not await adapter.probe_ready()
     await adapter.close()
+
+
+async def test_idle_slot_can_retain_the_last_completed_task_id(tmp_path):
+    adapter, _ = runtime(settings(tmp_path), slots=[{"is_processing": False, "id_task": 42}])
+    try:
+        assert await adapter.is_idle()
+    finally:
+        await adapter.close()
 
 
 @pytest.mark.parametrize("answer", ["", "   ", None, 42])
