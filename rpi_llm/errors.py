@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 
-
 ERRORS = {
     "LLM_UNAUTHORIZED": (401, "서비스 인증이 필요합니다."),
     "LLM_INVALID_INPUT": (422, "요청 형식이 올바르지 않습니다."),

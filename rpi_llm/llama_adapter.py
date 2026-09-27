@@ -117,7 +117,11 @@ class LlamaAdapter:
             choice = choices[0]
             answer = choice["message"]["content"]
             reason = choice["finish_reason"]
-            if not isinstance(answer, str) or not answer.strip() or reason not in {"stop", "length"}:
+            if (
+                not isinstance(answer, str)
+                or not answer.strip()
+                or reason not in {"stop", "length"}
+            ):
                 raise ValueError("invalid answer")
             raw_usage = data.get("usage")
             usage = None

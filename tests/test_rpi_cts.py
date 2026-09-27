@@ -32,7 +32,11 @@ def test_walker_reaches_each_edge_without_infinite_cycles():
     paths = list(SLOT_CTS.walk(State.NOT_READY))
     assert {path[-1] for path in paths} == set(SLOT_CTS.edges)
     assert all(len(path) <= len(SLOT_CTS.edges) for path in paths)
-    assert all(path[index].target == path[index + 1].source for path in paths for index in range(len(path) - 1))
+    assert all(
+        path[index].target == path[index + 1].source
+        for path in paths
+        for index in range(len(path) - 1)
+    )
     assert SLOT_CTS.step(State.READY, Action.DEADLINE) is None
 
 

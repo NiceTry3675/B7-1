@@ -41,7 +41,9 @@ def create_app(settings=None, adapter=None):
     @app.middleware("http")
     async def request_tracking(request: Request, call_next):
         supplied = request.headers.get("X-Request-ID", "")
-        request.state.request_id = supplied if REQUEST_ID.fullmatch(supplied) else "req_" + uuid4().hex
+        request.state.request_id = (
+            supplied if REQUEST_ID.fullmatch(supplied) else "req_" + uuid4().hex
+        )
         if request.url.path in {"/internal/v1/health", "/internal/v1/generate"}:
             token = request.headers.get("Authorization", "").removeprefix("Bearer ")
             if not token or not hmac.compare_digest(token, settings.llm_service_token):
@@ -78,7 +80,10 @@ def create_app(settings=None, adapter=None):
 
     @app.exception_handler(Exception)
     async def unexpected_error(request: Request, exc: Exception):
-        logger.error("llm_inference_failure request_id=%s code=LLM_INTERNAL_ERROR", request.state.request_id)
+        logger.error(
+            "llm_inference_failure request_id=%s code=LLM_INTERNAL_ERROR",
+            request.state.request_id,
+        )
         return error_response(request, InternalError("LLM_INTERNAL_ERROR"))
 
     def authenticate(authorization: str | None = Header(default=None)):
@@ -121,14 +126,24 @@ def create_app(settings=None, adapter=None):
         if payload.max_output_tokens > settings.llm_output_token_limit:
             raise InternalError("LLM_INVALID_INPUT")
         await refresh_readiness()
-        logger.info("llm_request_received request_id=%s model=%s", request.state.request_id, settings.llm_model)
+        logger.info(
+            "llm_request_received request_id=%s model=%s",
+            request.state.request_id,
+            settings.llm_model,
+        )
         try:
             logger.info("llm_inference_start request_id=%s", request.state.request_id)
             result = await runner.submit(payload)
         except InternalError as exc:
-            logger.info("llm_inference_failure request_id=%s code=%s", request.state.request_id, exc.code)
+            logger.info(
+                "llm_inference_failure request_id=%s code=%s", request.state.request_id, exc.code
+            )
             raise
-        logger.info("llm_inference_success request_id=%s latency_ms=%d", request.state.request_id, result.latency_ms)
+        logger.info(
+            "llm_inference_success request_id=%s latency_ms=%d",
+            request.state.request_id,
+            result.latency_ms,
+        )
         return result
 
     return app
