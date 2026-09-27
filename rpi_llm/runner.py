@@ -24,6 +24,10 @@ class TaskJobRunner:
                 asyncio.shield(job), self.settings.llm_generation_timeout_seconds
             )
         except TimeoutError as exc:
+            if job.done():
+                return job.result()
+            if self.queue.active_task is not job:
+                return await asyncio.shield(job)
             self.queue.deadline()
             if request_id:
                 logger.info("llm_deadline request_id=%s", request_id)
@@ -39,6 +43,8 @@ class TaskJobRunner:
         known = True
         inference_started = False
         runtime_returned = False
+        count_complete = False
+        count_failed = False
 
         def log_failure(code):
             if request_id:
@@ -47,6 +53,7 @@ class TaskJobRunner:
 
         try:
             input_tokens = await self.adapter.count_tokens(request)
+            count_complete = True
             if input_tokens + request.max_output_tokens > self.settings.llm_context_tokens:
                 raise InternalError("LLM_CONTEXT_TOO_LARGE")
             if request.max_output_tokens > self.settings.llm_output_token_limit:
@@ -74,18 +81,22 @@ class TaskJobRunner:
             return response
         except RuntimeUncertain as exc:
             known = not inference_started
+            count_failed = not count_complete
             log_failure("LLM_INTERNAL_ERROR")
             raise InternalError("LLM_INTERNAL_ERROR") from exc
         except asyncio.CancelledError:
             known = not inference_started
+            count_failed = not count_complete
             log_failure("LLM_INTERNAL_ERROR")
             raise
         except InternalError as exc:
+            count_failed = not count_complete
             log_failure(exc.code)
             raise
         except Exception as exc:
             known = not inference_started or runtime_returned
+            count_failed = not count_complete
             log_failure("LLM_INTERNAL_ERROR")
             raise InternalError("LLM_INTERNAL_ERROR") from exc
         finally:
-            self.queue.finish(known=known)
+            self.queue.finish(known=known, count_failed=count_failed)

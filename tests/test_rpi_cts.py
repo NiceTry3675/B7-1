@@ -71,11 +71,11 @@ def test_compute_queue_has_one_slot_and_no_waiting_list():
     with pytest.raises(InternalError, match="LLM_BUSY"):
         queue.claim()
     queue.deadline()
-    assert queue.state == State.QUARANTINED
-    with pytest.raises(InternalError, match="LLM_NOT_READY"):
+    assert queue.state == State.DRAINING_COUNT
+    with pytest.raises(InternalError, match="LLM_BUSY"):
         queue.claim()
     queue.recover_idle()
-    assert queue.state == State.READY
+    assert queue.state == State.DRAINING_COUNT
 
 
 @pytest.mark.parametrize(

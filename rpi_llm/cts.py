@@ -10,6 +10,8 @@ class State(StrEnum):
     READY = "ready"
     COUNTING = "counting"
     GENERATING = "generating"
+    DRAINING_COUNT = "draining_count"
+    DRAINING_GENERATION = "draining_generation"
     QUARANTINED = "quarantined"
 
 
@@ -19,10 +21,12 @@ class Action(StrEnum):
     CLAIM = "claim"
     CONTEXT_VALID = "context_valid"
     CONTEXT_REJECTED = "context_rejected"
+    COUNT_FAILED = "count_failed"
     INFERENCE_FINISHED = "inference_finished"
     INFERENCE_UNKNOWN = "inference_unknown"
     DEADLINE = "deadline"
     LATE_FINISHED = "late_finished"
+    LATE_UNKNOWN = "late_unknown"
     RUNTIME_IDLE = "runtime_idle"
 
 
@@ -39,11 +43,15 @@ EDGES = (
     Edge(State.READY, Action.CLAIM, State.COUNTING),
     Edge(State.COUNTING, Action.CONTEXT_VALID, State.GENERATING),
     Edge(State.COUNTING, Action.CONTEXT_REJECTED, State.READY),
-    Edge(State.COUNTING, Action.DEADLINE, State.QUARANTINED),
+    Edge(State.COUNTING, Action.COUNT_FAILED, State.NOT_READY),
+    Edge(State.COUNTING, Action.DEADLINE, State.DRAINING_COUNT),
     Edge(State.GENERATING, Action.INFERENCE_FINISHED, State.READY),
     Edge(State.GENERATING, Action.INFERENCE_UNKNOWN, State.QUARANTINED),
-    Edge(State.GENERATING, Action.DEADLINE, State.QUARANTINED),
-    Edge(State.QUARANTINED, Action.LATE_FINISHED, State.READY),
+    Edge(State.GENERATING, Action.DEADLINE, State.DRAINING_GENERATION),
+    Edge(State.DRAINING_COUNT, Action.LATE_FINISHED, State.READY),
+    Edge(State.DRAINING_COUNT, Action.COUNT_FAILED, State.NOT_READY),
+    Edge(State.DRAINING_GENERATION, Action.LATE_FINISHED, State.READY),
+    Edge(State.DRAINING_GENERATION, Action.LATE_UNKNOWN, State.QUARANTINED),
     Edge(State.QUARANTINED, Action.RUNTIME_IDLE, State.READY),
 )
 

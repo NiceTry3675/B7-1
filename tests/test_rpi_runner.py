@@ -32,10 +32,13 @@ class FakeAdapter:
         self.generate_calls = 0
         self.uncertain = False
         self.answer = "답변"
+        self.count_error = None
 
     async def count_tokens(self, payload):
         if self.count_gate:
             await self.count_gate.wait()
+        if self.count_error:
+            raise self.count_error
         return self.tokens
 
     async def generate(self, payload):
@@ -90,8 +93,8 @@ async def test_deadline_keeps_slot_until_inference_really_finishes():
     adapter.generate_gate = asyncio.Event()
     with pytest.raises(InternalError, match="LLM_TIMEOUT"):
         await runner.submit(request())
-    assert queue.state == State.QUARANTINED and queue.active_requests == 1
-    with pytest.raises(InternalError, match="LLM_NOT_READY"):
+    assert queue.state == State.DRAINING_GENERATION and queue.active_requests == 1
+    with pytest.raises(InternalError, match="LLM_BUSY"):
         await runner.submit(request())
     adapter.generate_gate.set()
     await wait_ready(queue)
@@ -128,6 +131,27 @@ async def test_uncertain_runtime_failure_quarantines_idle_slot():
     assert queue.state == State.READY
 
 
+async def test_uncertain_late_inference_needs_idle_probe():
+    adapter, queue, runner = setup(timeout=0.02)
+    adapter.generate_gate = asyncio.Event()
+    adapter.uncertain = True
+    with pytest.raises(InternalError, match="LLM_TIMEOUT"):
+        await runner.submit(request())
+    assert queue.state == State.DRAINING_GENERATION and queue.active_requests == 1
+    adapter.generate_gate.set()
+
+    async def wait_quarantined():
+        while queue.state != State.QUARANTINED:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_quarantined(), 1)
+    assert queue.active_requests == 0
+    with pytest.raises(InternalError, match="LLM_NOT_READY"):
+        await runner.submit(request())
+    queue.recover_idle()
+    assert queue.state == State.READY
+
+
 async def test_token_budget_rejects_before_inference():
     adapter, queue, runner = setup()
     adapter.tokens = 81
@@ -149,7 +173,32 @@ async def test_token_count_deadline_never_starts_inference_after_reply():
     adapter.count_gate = asyncio.Event()
     with pytest.raises(InternalError, match="LLM_TIMEOUT"):
         await runner.submit(request())
-    assert queue.state == State.QUARANTINED
+    assert queue.state == State.DRAINING_COUNT
     adapter.count_gate.set()
     await wait_ready(queue)
+    assert adapter.generate_calls == 0
+
+
+async def test_count_failure_downgrades_readiness_before_inference():
+    adapter, queue, runner = setup()
+    adapter.count_error = InternalError("LLM_NOT_READY")
+    with pytest.raises(InternalError, match="LLM_NOT_READY"):
+        await runner.submit(request())
+    assert queue.state == State.NOT_READY and adapter.generate_calls == 0
+
+
+async def test_late_count_failure_downgrades_readiness():
+    adapter, queue, runner = setup(timeout=0.02)
+    adapter.count_gate = asyncio.Event()
+    adapter.count_error = InternalError("LLM_NOT_READY")
+    with pytest.raises(InternalError, match="LLM_TIMEOUT"):
+        await runner.submit(request())
+    assert queue.state == State.DRAINING_COUNT
+    adapter.count_gate.set()
+
+    async def wait_not_ready():
+        while queue.state != State.NOT_READY:
+            await asyncio.sleep(0)
+
+    await asyncio.wait_for(wait_not_ready(), 1)
     assert adapter.generate_calls == 0

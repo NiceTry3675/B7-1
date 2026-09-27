@@ -43,24 +43,30 @@ class ComputeJobQueue:
         self.active_task = task
 
     def begin_inference(self):
-        if self.state == State.QUARANTINED:
+        if self.state == State.DRAINING_COUNT:
             return False
         self._advance(Action.CONTEXT_VALID)
         return True
 
     def deadline(self):
-        if self.state in {State.COUNTING, State.GENERATING}:
-            self._advance(Action.DEADLINE)
+        if self.state in {State.DRAINING_COUNT, State.DRAINING_GENERATION}:
+            return False
+        self._advance(Action.DEADLINE)
+        return True
 
-    def finish(self, *, known):
+    def finish(self, *, known, count_failed=False):
         if self.active_task is not asyncio.current_task():
             raise RuntimeError("only the active job may finish")
         if self.state == State.COUNTING:
-            self._advance(Action.CONTEXT_REJECTED)
+            self._advance(Action.COUNT_FAILED if count_failed else Action.CONTEXT_REJECTED)
         elif self.state == State.GENERATING:
             self._advance(Action.INFERENCE_FINISHED if known else Action.INFERENCE_UNKNOWN)
-        elif self.state == State.QUARANTINED and known:
-            self._advance(Action.LATE_FINISHED)
+        elif self.state == State.DRAINING_COUNT:
+            self._advance(Action.COUNT_FAILED if count_failed else Action.LATE_FINISHED)
+        elif self.state == State.DRAINING_GENERATION:
+            self._advance(Action.LATE_FINISHED if known else Action.LATE_UNKNOWN)
+        else:
+            raise RuntimeError(f"job cannot finish in {self.state}")
         self.active_task = None
 
     def recover_idle(self):
