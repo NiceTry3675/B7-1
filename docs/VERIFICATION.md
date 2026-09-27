@@ -66,4 +66,8 @@
   바이너리 링크나 모델·GPU 실행 검증은 아닙니다.
 - 평가용 CPU Gemma 추론, 실제 llama-server 준비·복구, GPU shader
   correctness·성능, 외부 HTTPS 서비스는 이 기록에서 미실행입니다.
+  `scripts.check_tokenizer_match --run`은 동일한 로컬 템플릿 입력을
+  Transformers와 llama-server에서 비교하도록 준비했지만 모델 서버와
+  토크나이저 파일이 아직 준비되지 않아 실행하지 않았습니다. 이 검사는
+  텍스트 생성 없이 토큰 수만 요청합니다.
   순서와 명령은 [RPi 가이드](RPI_LLM.md#verification-order)에 있습니다.
