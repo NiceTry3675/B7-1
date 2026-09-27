@@ -3,7 +3,9 @@
 This is the GPU research track for the B7-1 submission. The chatbot's planned
 real Gemma run uses CPU. Neither new GPU patch is enabled by that CPU run.
 `patches/llama.cpp/0001-*` is the previously measured Broadcom Q4_0 matvec
-change; `0002-*` and `patches/mesa/0001-*` are separate research patches.
+change; `0002-*`, `0003-*`, and `patches/mesa/0001-*` are separate research
+patches. The packed integer-dot family is traced in
+[V3DV packed 4×8 dot](V3DV_DOT4X8.md).
 
 ## Where the small tile is selected
 
@@ -43,8 +45,9 @@ after:  16 vec2 = 32 FP32 accumulator values per lane
 
 `python -m scripts.analyze_v3dv_tile` enumerates every lane, warp, and output
 coordinate using these shader formulas. It confirms 1,024 unique cells in the
-patched 32×32 tile, each written once, and B row indices at most 31. It is a
-source-level arithmetic check, not a shader execution.
+patched 32×32 scalar and MMQ tiles, each written once, and B row indices at
+most 31. It also checks the one-warp `matmul-id` exception. It is a source-level
+arithmetic check, not a shader execution.
 
 The V3D 7.x two-thread physical RF budget in Mesa is 64 registers. The old
 accumulator count alone reaches that number; addresses, caches, and loop state
@@ -52,10 +55,12 @@ need registers too. Halving the source accumulator count creates headroom,
 but LLVM/SPIR-V/NIR/VIR transformations determine actual live temps and
 spills. A lower register count or faster runtime is still unmeasured.
 
-The patch changes only non-cooperative small scalar matrix pipelines on
-detected Broadcom VC7 with subgroup size 16. It leaves Q4_0 MMQ, matmul-id,
-medium/large tiles, and every other GPU unchanged. In particular, it does
-not establish faster Gemma Q4_0 prefill. The earlier `b13d13e` patch affects
+The scalar patch changes only non-cooperative small matrix pipelines on
+detected Broadcom VC7 with subgroup size 16. The packed-dot patch extends
+the same two-warp correction to six small MMQ and MMQ-id vectors. It leaves
+the one-warp nonquant `matmul-id`, medium/large tiles, and every other GPU
+unchanged. It does not establish faster Gemma Q4_0 prefill: the common large
+MMQ pipeline is outside this change. The earlier `b13d13e` patch affects
 the single-token Q4_0 integer-dot matvec path, a different shader family.
 
 ## Mesa V3D patch
@@ -64,7 +69,8 @@ the single-token Q4_0 integer-dot matvec path, a different shader family.
 `origin/main` at `f6f72d4b21c`. It adds a `V3D_DEBUG=ra` diagnostic just
 after live intervals and thread count are set, before graph coloring or
 spilling. The line reports shader stage and ID, maximum simultaneously live
-VIR temps, physical RF budget, and thread count. It runs only on the
+VIR temps, physical RF budget, thread count, `V8DOT` count, and NN mode
+counts. It runs only on the
 accumulator-free V3D path when RA debug logging is enabled. It changes no
 register allocation decision or generated shader. The logged live-temp count
 is a pressure indicator, not a direct measurement of physical registers.

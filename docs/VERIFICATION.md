@@ -33,3 +33,26 @@
 - 로컬 모델 구현·성능·품질·전체 추론 슬롯·실제 중단 동작은 요청에 따라 제외했습니다.
 
 테스트 대체 응답은 `tests/`에서만 사용하며 제품 실행 경로에 모의 답변 모드는 없습니다.
+
+## RPi 어댑터와 GPU 연구 패치 — 2026-09-28
+
+- `bash scripts/verify_rpi_offline.sh`: RPi 대상 mock 38개 통과,
+  전체 103개 통과·4개 skip, Ruff 검사·포맷 검사 통과. CTS walker의
+  간선 없음·범위 제한, 단일 작업 큐, 취소·시간 초과 슬롯 유지,
+  llama-server MockTransport, 인증된 내부 API, 서비스→DB 저장 흐름을 포함합니다.
+  Docker 프록시 4개는 이 실행에서 활성화하지 않았습니다.
+- `scripts.analyze_v3dv_tile`: VC7의 scalar·packed 4×8 MMQ·K-quant MMQ
+  small tile에서 2-warp `WN=32`의 2,048개 계산 좌표와 shared B row 63,
+  `WN=16`의 1,024개 고유 좌표와 최고 row 31을 재현했습니다.
+  한 warp인 nonquant matmul-id의 `WN=32` 유지도 확인했습니다.
+- llama.cpp `1f368f3`와 Mesa `f6f72d4b21c`의 별도 깨끗한 작업트리에서
+  patch bundle의 dry-run, 실제 적용, 결과 파일의 격리 작업트리 대조,
+  재적용 감지, `git diff --check`를 통과했습니다. 원래 llama.cpp 작업트리의
+  미커밋 Vulkan 수정에는 적용을 거부했습니다.
+- patched `ggml-vulkan.cpp` translation unit은 기존 Vulkan build의
+  컴파일 명령에서 `-O0`로, Mesa `vir_register_allocate.c` translation unit은
+  기존 origin-main build 명령으로 각각 컴파일했습니다. 두 빌드 모두
+  바이너리 링크나 모델·GPU 실행 검증은 아닙니다.
+- 평가용 CPU Gemma 추론, 실제 llama-server 준비·복구, GPU shader
+  correctness·성능, 외부 HTTPS 서비스는 이 기록에서 미실행입니다.
+  순서와 명령은 [RPi 가이드](RPI_LLM.md#verification-order)에 있습니다.

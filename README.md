@@ -17,6 +17,7 @@
 **llama.cpp 프로세스 제어, 모델 다운로드·로딩·실제 추론은 별도 작업입니다.**
 평가용 실제 Gemma 실행은 CPU 경로로 계획했고, GPU 패치의 정적 근거와 한계는
 [V3DV tile 분석](docs/V3DV_TILE_ANALYSIS.md)에 적었습니다.
+packed 4×8 정수 dot 경로는 [별도 분석](docs/V3DV_DOT4X8.md)에 정리했습니다.
 외부 생성형 AI로 전환하거나 가짜 답변을 반환하지 않습니다. 연결 설정이 없으면 질문이
 `failed / AI_CONFIG_ERROR`로 저장됩니다. 계정·대화·기록 기능은 사용할 수 있습니다.
 

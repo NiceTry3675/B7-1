@@ -76,9 +76,11 @@ rechecks the exact token count before inference.
 `patches/llama.cpp/0001-*` carries local llama.cpp commit `b13d13e` against
 base `1f368f3`. It detects V3D 7.x and changes only Broadcom Q4_0
 single-token integer-dot matvec to two output rows per subgroup. `0002-*`
-is the separate VC7 small scalar tile candidate. The Mesa V3D patch under
-`patches/mesa/` adds pre-spill RA diagnostics. Their exact scope and tile
-arithmetic are in [V3DV tile analysis](V3DV_TILE_ANALYSIS.md). None includes
+and `0003-*` are the separate VC7 small scalar and packed 4×8 dot tile
+candidates. The Mesa V3D patch under `patches/mesa/` adds pre-spill RA and
+dot-mode diagnostics. Their exact scope and tile arithmetic are in
+[V3DV tile analysis](V3DV_TILE_ANALYSIS.md) and
+[packed 4×8 dot analysis](V3DV_DOT4X8.md). None includes
 the separate uncommitted Vulkan barrier edit in the original llama.cpp tree.
 The patch scripts do a dry run by default, check SHA-256 digests, refuse dirty
 target source, and need `--apply` to write another checkout. They never commit
