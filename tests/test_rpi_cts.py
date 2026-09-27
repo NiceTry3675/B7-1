@@ -122,6 +122,30 @@ def test_stale_events_are_distinct_from_invalid_events():
     assert queue.model_lost() is True
 
 
+def test_all_invalid_events_fail_without_moving_the_slot():
+    for state, action in product(State, Action):
+        if SLOT_CTS.no_edge(state, action) != NoEdgePolicy.INVALID:
+            continue
+        queue = ComputeJobQueue()
+        queue.state = state
+        with pytest.raises(RuntimeError, match="invalid_event"):
+            queue._advance(action)
+        assert queue.state == state
+
+
+def test_all_admission_no_edges_return_the_documented_error():
+    for state in State:
+        policy = SLOT_CTS.no_edge(state, Action.CLAIM)
+        if policy not in {NoEdgePolicy.BUSY, NoEdgePolicy.NOT_READY}:
+            continue
+        queue = ComputeJobQueue()
+        queue.state = state
+        expected = "LLM_BUSY" if policy == NoEdgePolicy.BUSY else "LLM_NOT_READY"
+        with pytest.raises(InternalError, match=expected):
+            queue.claim()
+        assert queue.state == state
+
+
 @pytest.mark.parametrize(
     "changes",
     [
