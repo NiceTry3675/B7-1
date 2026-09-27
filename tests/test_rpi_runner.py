@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,7 @@ class FakeAdapter:
         self.started = asyncio.Event()
         self.generate_calls = 0
         self.uncertain = False
+        self.answer = "답변"
 
     async def count_tokens(self, payload):
         if self.count_gate:
@@ -43,7 +45,7 @@ class FakeAdapter:
             await self.generate_gate.wait()
         if self.uncertain:
             raise RuntimeUncertain()
-        return SimpleNamespace(answer="답변", finish_reason="stop", usage=None)
+        return SimpleNamespace(answer=self.answer, finish_reason="stop", usage=None)
 
 
 def setup(timeout=1):
@@ -96,10 +98,11 @@ async def test_deadline_keeps_slot_until_inference_really_finishes():
     assert adapter.generate_calls == 1 and queue.active_requests == 0
 
 
-async def test_client_cancellation_does_not_cancel_compute_job():
+async def test_client_cancellation_does_not_cancel_compute_job(caplog):
     adapter, queue, runner = setup()
+    caplog.set_level(logging.INFO, logger="rpi_llm")
     adapter.generate_gate = asyncio.Event()
-    caller = asyncio.create_task(runner.submit(request()))
+    caller = asyncio.create_task(runner.submit(request(), "req_cancel"))
     await asyncio.wait_for(adapter.started.wait(), 1)
     caller.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -107,6 +110,10 @@ async def test_client_cancellation_does_not_cancel_compute_job():
     assert queue.state == State.GENERATING and queue.active_requests == 1
     adapter.generate_gate.set()
     await wait_ready(queue)
+    assert any(
+        "llm_inference_success request_id=req_cancel" in record.getMessage()
+        for record in caplog.records
+    )
 
 
 async def test_uncertain_runtime_failure_quarantines_idle_slot():
@@ -127,6 +134,14 @@ async def test_token_budget_rejects_before_inference():
     with pytest.raises(InternalError, match="LLM_CONTEXT_TOO_LARGE"):
         await runner.submit(request())
     assert adapter.generate_calls == 0 and queue.state == State.READY
+
+
+async def test_bad_response_after_runtime_returns_releases_slot():
+    adapter, queue, runner = setup()
+    adapter.answer = ""
+    with pytest.raises(InternalError, match="LLM_INTERNAL_ERROR"):
+        await runner.submit(request())
+    assert adapter.generate_calls == 1 and queue.state == State.READY
 
 
 async def test_token_count_deadline_never_starts_inference_after_reply():

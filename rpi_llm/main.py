@@ -137,18 +137,12 @@ def create_app(settings=None, adapter=None):
             settings.llm_model,
         )
         try:
-            logger.info("llm_inference_start request_id=%s", request.state.request_id)
-            result = await runner.submit(payload)
+            return await runner.submit(payload, request.state.request_id)
         except InternalError as exc:
-            logger.info(
-                "llm_inference_failure request_id=%s code=%s", request.state.request_id, exc.code
-            )
+            if exc.code == "LLM_BUSY":
+                logger.info("llm_busy request_id=%s", request.state.request_id)
+            elif exc.code == "LLM_NOT_READY":
+                logger.info("model_not_ready request_id=%s", request.state.request_id)
             raise
-        logger.info(
-            "llm_inference_success request_id=%s latency_ms=%d",
-            request.state.request_id,
-            result.latency_ms,
-        )
-        return result
 
     return app

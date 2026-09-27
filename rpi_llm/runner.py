@@ -1,8 +1,11 @@
 import asyncio
+import logging
 from time import monotonic
 
 from rpi_llm.errors import InternalError, RuntimeUncertain
 from rpi_llm.schemas import GenerationResponse
+
+logger = logging.getLogger("rpi_llm")
 
 
 class TaskJobRunner:
@@ -11,9 +14,9 @@ class TaskJobRunner:
         self.adapter = adapter
         self.queue = queue
 
-    async def submit(self, request):
+    async def submit(self, request, request_id=None):
         self.queue.claim()
-        job = asyncio.create_task(self._run(request))
+        job = asyncio.create_task(self._run(request, request_id))
         self.queue.attach(job)
         job.add_done_callback(self._observe)
         try:
@@ -22,6 +25,8 @@ class TaskJobRunner:
             )
         except TimeoutError as exc:
             self.queue.deadline()
+            if request_id:
+                logger.info("llm_deadline request_id=%s", request_id)
             raise InternalError("LLM_TIMEOUT") from exc
 
     @staticmethod
@@ -29,10 +34,17 @@ class TaskJobRunner:
         if not job.cancelled():
             job.exception()
 
-    async def _run(self, request):
+    async def _run(self, request, request_id):
         start = monotonic()
         known = True
         inference_started = False
+        runtime_returned = False
+
+        def log_failure(code):
+            if request_id:
+                event = "llm_inference_failure" if inference_started else "llm_request_failure"
+                logger.info("%s request_id=%s code=%s", event, request_id, code)
+
         try:
             input_tokens = await self.adapter.count_tokens(request)
             if input_tokens + request.max_output_tokens > self.settings.llm_context_tokens:
@@ -42,24 +54,38 @@ class TaskJobRunner:
             if not self.queue.begin_inference():
                 raise InternalError("LLM_TIMEOUT")
             inference_started = True
+            if request_id:
+                logger.info("llm_inference_start request_id=%s", request_id)
             result = await self.adapter.generate(request)
-            return GenerationResponse(
+            runtime_returned = True
+            response = GenerationResponse(
                 model=self.settings.llm_model,
                 answer=result.answer,
                 finish_reason=result.finish_reason,
                 usage=result.usage,
                 latency_ms=int((monotonic() - start) * 1000),
             )
+            if request_id:
+                logger.info(
+                    "llm_inference_success request_id=%s latency_ms=%d",
+                    request_id,
+                    response.latency_ms,
+                )
+            return response
         except RuntimeUncertain as exc:
             known = not inference_started
+            log_failure("LLM_INTERNAL_ERROR")
             raise InternalError("LLM_INTERNAL_ERROR") from exc
         except asyncio.CancelledError:
             known = not inference_started
+            log_failure("LLM_INTERNAL_ERROR")
             raise
-        except InternalError:
+        except InternalError as exc:
+            log_failure(exc.code)
             raise
         except Exception as exc:
-            known = not inference_started
+            known = not inference_started or runtime_returned
+            log_failure("LLM_INTERNAL_ERROR")
             raise InternalError("LLM_INTERNAL_ERROR") from exc
         finally:
             self.queue.finish(known=known)

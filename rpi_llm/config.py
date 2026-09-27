@@ -28,8 +28,8 @@ class RPiSettings(BaseSettings):
     @field_validator("llm_model")
     @classmethod
     def validate_alias(cls, value):
-        if not value or value != value.strip():
-            raise ValueError("LLM_MODEL must be a nonempty alias")
+        if not value or len(value) > 128 or value != value.strip():
+            raise ValueError("LLM_MODEL must be a nonempty alias of at most 128 characters")
         return value
 
     @field_validator("llm_model_path")

@@ -9,7 +9,7 @@ class StrictModel(BaseModel):
 
 class Message(StrictModel):
     role: Literal["user", "assistant"]
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=8192)
 
     @model_validator(mode="after")
     def nonblank(self):
@@ -19,8 +19,8 @@ class Message(StrictModel):
 
 
 class GenerationRequest(StrictModel):
-    model: str = Field(min_length=1)
-    system_prompt: str = Field(min_length=1)
+    model: str = Field(min_length=1, max_length=128)
+    system_prompt: str = Field(min_length=1, max_length=8192)
     messages: list[Message] = Field(min_length=1, max_length=11)
     max_output_tokens: int = Field(ge=1, le=512)
     temperature: float = Field(ge=0, le=1)
@@ -44,7 +44,7 @@ class Usage(StrictModel):
 
 class GenerationResponse(StrictModel):
     model: str
-    answer: str = Field(min_length=1)
+    answer: str = Field(min_length=1, max_length=32768)
     finish_reason: Literal["stop", "length"]
     usage: Usage | None
     latency_ms: int = Field(ge=0)

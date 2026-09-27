@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from types import SimpleNamespace
 
 import httpx
@@ -108,8 +109,9 @@ async def test_generate_preserves_request_id_and_rejects_invalid_input(api):
     assert runtime.calls == 1
 
 
-async def test_other_conversation_is_busy_with_zero_queue(api):
+async def test_other_conversation_is_busy_with_zero_queue(api, caplog):
     client, runtime, _ = api
+    caplog.set_level(logging.INFO, logger="rpi_llm")
     headers = {"Authorization": "Bearer " + "s" * 32}
     runtime.gate = asyncio.Event()
     first = asyncio.create_task(
@@ -123,6 +125,9 @@ async def test_other_conversation_is_busy_with_zero_queue(api):
         health = await client.get("/internal/v1/health", headers=headers)
         assert health.json()["active_requests"] == 1
         assert runtime.calls == 1
+        events = [record.getMessage().split()[0] for record in caplog.records]
+        assert events.count("llm_inference_start") == 1
+        assert "llm_busy" in events
     finally:
         runtime.gate.set()
         assert (await first).status_code == 200
