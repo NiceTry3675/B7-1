@@ -6,6 +6,7 @@ import pytest
 
 from rpi_llm.config import RPiSettings
 from rpi_llm.errors import RuntimeUncertain
+from rpi_llm.lease import RuntimeLease
 from rpi_llm.main import create_app
 
 
@@ -137,3 +138,12 @@ async def test_uncertain_runtime_stays_unready_until_idle_verified(api):
     assert (await client.get("/internal/v1/health", headers=headers)).status_code == 503
     runtime.idle = True
     assert (await client.get("/internal/v1/health", headers=headers)).status_code == 200
+
+
+def test_single_process_lease_rejects_second_wrapper():
+    with RuntimeLease("http://127.0.0.1:8080"):
+        with pytest.raises(RuntimeError, match="already owns"):
+            with RuntimeLease("http://127.0.0.1:8080"):
+                pass
+    with RuntimeLease("http://127.0.0.1:8080"):
+        pass

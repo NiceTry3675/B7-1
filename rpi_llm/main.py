@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from rpi_llm.config import RPiSettings
 from rpi_llm.cts import State
 from rpi_llm.errors import InternalError
+from rpi_llm.lease import RuntimeLease
 from rpi_llm.llama_adapter import LlamaAdapter
 from rpi_llm.queue import ComputeJobQueue
 from rpi_llm.runner import TaskJobRunner
@@ -28,11 +29,14 @@ def create_app(settings=None, adapter=None):
 
     @asynccontextmanager
     async def lifespan(app):
-        if await adapter.probe_ready():
-            queue.model_ready()
-            logger.info("model_ready model=%s", settings.llm_model)
-        yield
-        await adapter.close()
+        try:
+            with RuntimeLease(settings.llm_runtime_url):
+                if await adapter.probe_ready():
+                    queue.model_ready()
+                    logger.info("model_ready model=%s", settings.llm_model)
+                yield
+        finally:
+            await adapter.close()
 
     app = FastAPI(title="Raspberry Pi internal LLM", lifespan=lifespan)
     app.state.queue = queue
