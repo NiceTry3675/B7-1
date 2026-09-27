@@ -1,0 +1,49 @@
+{
+  "change": "Recognize Broadcom V3D 7.x and process two output rows per subgroup for Q4_0 single-token integer-dot matvec.",
+  "baseline_revision": "1f368f3",
+  "build": "Both comparison host backends compiled with -O0; same existing SPIR-V objects and system V3DV driver. Production build-vulkan was not overwritten.",
+  "correctness": "9/9 shape/boundary/control tests passed; repeated warm shape comparisons also passed 20/20 in each of four runs.",
+  "native_dot": "Packed OpSDot in the actual Q4_0 shader and v8dot in native QPU dump, baseline-native-dot.log.",
+  "candidate_shader_stats": {
+    "instruction_count": 1430,
+    "threads": 2,
+    "spill_size": 0,
+    "tmu_spills": 0,
+    "tmu_fills": 0
+  },
+  "rejected_rows4": {
+    "spill_size": 1856,
+    "tmu_spills": 1,
+    "tmu_fills": 2
+  },
+  "gemma_tg8": {
+    "model": "Research/llama-models/gemma-3-1b-it-qat-Q4_0.gguf",
+    "repetitions": 2,
+    "batch": 32,
+    "ubatch": 32,
+    "gpu_layers": 99,
+    "threads": 4,
+    "baseline_tokens_per_second": 0.277987,
+    "candidate_tokens_per_second": 0.299188,
+    "baseline_samples": [
+      0.277934,
+      0.278041
+    ],
+    "candidate_samples": [
+      0.299701,
+      0.298676
+    ],
+    "ratio": 1.0762661563310516
+  },
+  "limitations": [
+    "Short tg8 test at empty context; no long-context or prefill performance claim.",
+    "Host -O0 validation builds, not the original -O3 executable configuration.",
+    "Desktop graphics remained active. No other llama process ran during the comparison."
+  ],
+  "sha256": {
+    "/home/ljh/self-os/Research/llama.cpp/build-vulkan-gemma/baseline-quick/bin/libggml-vulkan.so.0.19.0": "feccaeb7a3b46725c7fe7899b8ffd7c45d0af79a6185c9d507944a095b6e08b2",
+    "/home/ljh/self-os/Research/llama.cpp/build-vulkan-gemma/candidate-quick/bin/libggml-vulkan.so.0.19.0": "3f2d817907251d08f60b480e387182b03bde51c274c6f3f7581dc5310ea8dc06",
+    "/home/ljh/self-os/Research/llama.cpp/ggml/src/ggml-vulkan/ggml-vulkan.cpp": "09593c5480d3e8398d53fc758395f4e80857f6439b51c25c9e30a72b4b0ab296",
+    "/usr/lib/aarch64-linux-gnu/libvulkan_broadcom.so": "e13db437346235937c562a7ee838be29cf1c3af7d6a851746aeea5cf68506c00"
+  }
+}
