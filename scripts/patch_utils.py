@@ -20,6 +20,8 @@ def check_or_apply(root, target, patches, *, apply=False):
         raise ValueError("directory must be the root of a Git checkout")
     if not (root / target).is_file():
         raise ValueError("patch target source is missing")
+    if git(root, "ls-files", "--error-unmatch", "--", target).returncode:
+        raise ValueError("patch target is not tracked by Git")
     for patch, digest in patches:
         if hashlib.sha256(patch.read_bytes()).hexdigest() != digest:
             raise ValueError("bundled patch checksum mismatch")
