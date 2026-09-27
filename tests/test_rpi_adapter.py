@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -9,7 +10,7 @@ from rpi_llm.llama_adapter import LlamaAdapter
 from rpi_llm.schemas import GenerationRequest
 
 
-def settings(tmp_path):
+def settings(tmp_path, **changes):
     model = tmp_path / "gemma-3-1b.gguf"
     model.write_bytes(b"GGUF")
     return RPiSettings(
@@ -18,6 +19,7 @@ def settings(tmp_path):
         llm_model_path=model,
         llm_context_tokens=128,
         llm_output_token_limit=32,
+        **changes,
     )
 
 
@@ -130,6 +132,48 @@ async def test_transport_failure_is_unknown_only_after_inference_starts(tmp_path
 
     config = settings(tmp_path)
     adapter = LlamaAdapter(config, httpx.AsyncClient(transport=httpx.MockTransport(disconnected)))
+    with pytest.raises(InternalError, match="LLM_NOT_READY"):
+        await adapter.count_tokens(request())
+    with pytest.raises(RuntimeUncertain):
+        await adapter.generate(request())
+    await adapter.close()
+
+
+async def test_probe_deadline_covers_all_readiness_calls(tmp_path):
+    paths = []
+
+    async def slow(req):
+        paths.append(req.url.path)
+        await asyncio.sleep(0.04)
+        return httpx.Response(200, json={"status": "ok"})
+
+    config = settings(
+        tmp_path,
+        llm_generation_timeout_seconds=0.1,
+        llm_runtime_timeout_seconds=0.15,
+        llm_runtime_probe_timeout_seconds=0.07,
+    )
+    adapter = LlamaAdapter(config, httpx.AsyncClient(transport=httpx.MockTransport(slow)))
+    assert not await adapter.probe_ready()
+    assert "/v1/models" not in paths
+    paths.clear()
+    assert not await adapter.is_idle()
+    assert "/slots" not in paths
+    await adapter.close()
+
+
+async def test_runtime_total_deadline_maps_count_and_inference_differently(tmp_path):
+    async def slow(req):
+        await asyncio.sleep(0.2)
+        return httpx.Response(200, json={"input_tokens": 20})
+
+    config = settings(
+        tmp_path,
+        llm_generation_timeout_seconds=0.05,
+        llm_runtime_timeout_seconds=0.08,
+        llm_runtime_probe_timeout_seconds=0.02,
+    )
+    adapter = LlamaAdapter(config, httpx.AsyncClient(transport=httpx.MockTransport(slow)))
     with pytest.raises(InternalError, match="LLM_NOT_READY"):
         await adapter.count_tokens(request())
     with pytest.raises(RuntimeUncertain):

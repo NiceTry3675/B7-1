@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 import httpx
@@ -26,49 +27,52 @@ class LlamaAdapter:
         await self.client.aclose()
 
     async def _request(self, method, path, *, json=None):
-        return await self.client.request(
-            method,
-            self.settings.llm_runtime_url + path,
-            headers={"Authorization": f"Bearer {self.settings.llm_service_token}"},
-            json=json,
-        )
+        async with asyncio.timeout(self.settings.llm_runtime_timeout_seconds):
+            return await self.client.request(
+                method,
+                self.settings.llm_runtime_url + path,
+                headers={"Authorization": f"Bearer {self.settings.llm_service_token}"},
+                json=json,
+            )
 
     async def probe_ready(self):
         if not self.settings.llm_model_path.is_file():
             return False
         try:
-            health = await self._request("GET", "/health")
-            props = await self._request("GET", "/props")
-            models = await self._request("GET", "/v1/models")
-            if any(response.status_code != 200 for response in (health, props, models)):
-                return False
-            info = props.json()
-            return (
-                health.json().get("status") == "ok"
-                and info.get("model_path") == str(self.settings.llm_model_path)
-                and info.get("total_slots") == 1
-                and info.get("default_generation_settings", {}).get("n_ctx")
-                == self.settings.llm_context_tokens
-                and [item.get("id") for item in models.json().get("data", [])]
-                == [self.settings.llm_model]
-            )
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            async with asyncio.timeout(self.settings.llm_runtime_probe_timeout_seconds):
+                health = await self._request("GET", "/health")
+                props = await self._request("GET", "/props")
+                models = await self._request("GET", "/v1/models")
+                if any(response.status_code != 200 for response in (health, props, models)):
+                    return False
+                info = props.json()
+                return (
+                    health.json().get("status") == "ok"
+                    and info.get("model_path") == str(self.settings.llm_model_path)
+                    and info.get("total_slots") == 1
+                    and info.get("default_generation_settings", {}).get("n_ctx")
+                    == self.settings.llm_context_tokens
+                    and [item.get("id") for item in models.json().get("data", [])]
+                    == [self.settings.llm_model]
+                )
+        except (TimeoutError, httpx.HTTPError, ValueError, TypeError, AttributeError):
             return False
 
     async def is_idle(self):
-        if not await self.probe_ready():
-            return False
         try:
-            response = await self._request("GET", "/slots")
-            slots = response.json()
-            return (
-                response.status_code == 200
-                and isinstance(slots, list)
-                and len(slots) == 1
-                and slots[0].get("is_processing") is False
-                and slots[0].get("id_task") == -1
-            )
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError):
+            async with asyncio.timeout(self.settings.llm_runtime_probe_timeout_seconds):
+                if not await self.probe_ready():
+                    return False
+                response = await self._request("GET", "/slots")
+                slots = response.json()
+                return (
+                    response.status_code == 200
+                    and isinstance(slots, list)
+                    and len(slots) == 1
+                    and slots[0].get("is_processing") is False
+                    and slots[0].get("id_task") == -1
+                )
+        except (TimeoutError, httpx.HTTPError, ValueError, TypeError, AttributeError):
             return False
 
     def _payload(self, request):
@@ -95,7 +99,7 @@ class LlamaAdapter:
             if type(value) is not int or value < 1:
                 raise InternalError("LLM_INTERNAL_ERROR")
             return value
-        except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
+        except (TimeoutError, httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
             raise InternalError("LLM_NOT_READY") from exc
 
     async def generate(self, request):
@@ -103,7 +107,7 @@ class LlamaAdapter:
             response = await self._request(
                 "POST", "/v1/chat/completions", json=self._payload(request)
             )
-        except httpx.HTTPError as exc:
+        except (TimeoutError, httpx.HTTPError) as exc:
             raise RuntimeUncertain() from exc
         if response.status_code == 503:
             raise InternalError("LLM_BUSY")

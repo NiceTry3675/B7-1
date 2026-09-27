@@ -108,6 +108,7 @@ def test_request_validator_rejects_invalid_shapes(changes):
         {"llm_max_concurrency": 2},
         {"llm_context_tokens": 256},
         {"llm_runtime_timeout_seconds": 100},
+        {"llm_runtime_probe_timeout_seconds": 120},
     ],
 )
 def test_rpi_configuration_rejects_unsafe_or_inconsistent_values(changes):

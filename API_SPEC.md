@@ -721,6 +721,7 @@ INFO db_save_success request_id=req_9f4c1d user_id=12 conversation_id=34 turn_id
 | `LLM_MODEL_PATH` | 라즈베리파이 | 실제 로컬 모델 파일 위치. 실행기에 맞춰 적용 |
 | `LLM_RUNTIME_URL` | 라즈베리파이 | llama-server의 loopback HTTP 주소 |
 | `LLM_RUNTIME_TIMEOUT_SECONDS` | 라즈베리파이 | runtime HTTP 제한, 초기 130초 |
+| `LLM_RUNTIME_PROBE_TIMEOUT_SECONDS` | 라즈베리파이 | readiness/slot 점검 전체 제한, 초기 5초 |
 | `LLM_CONTEXT_TOKENS` | 백엔드 + 라즈베리파이 | 실제 로드한 컨텍스트 크기. 모델 및 메모리 측정 후 동일하게 확정 |
 | `LLM_MAX_OUTPUT_TOKENS` | 백엔드 | 요청 출력 예산, 초기 256 |
 | `LLM_OUTPUT_TOKEN_LIMIT` | 라즈베리파이 | 허용 출력 예산 상한, 초기 512 |

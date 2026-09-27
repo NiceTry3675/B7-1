@@ -46,7 +46,14 @@ address, without `/internal/v1`. The Raspberry Pi adapter reads:
 | `LLM_OUTPUT_TOKEN_LIMIT` | Adapter ceiling, initially 512 |
 | `LLM_GENERATION_TIMEOUT_SECONDS` | Complete internal request deadline, initially 120 |
 | `LLM_RUNTIME_TIMEOUT_SECONDS` | Runtime HTTP timeout, initially 130 |
+| `LLM_RUNTIME_PROBE_TIMEOUT_SECONDS` | Complete readiness/slot probe deadline, initially 5 |
 | `LLM_MAX_CONCURRENCY` | Must be 1 |
+
+HTTPX enforces network inactivity limits for connection, read, write, and
+pool phases. The adapter also enforces a complete runtime-call deadline and
+a shorter complete readiness/slot-probe deadline. A generation call that ends
+with an uncertain timeout keeps the compute slot quarantined until runtime
+idleness is verified.
 
 For the chatbot's CPU run, use a locally built llama-server and
 `--gpu-layers 0`. The GPU patches are separate research artifacts, not a

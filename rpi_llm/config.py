@@ -16,6 +16,7 @@ class RPiSettings(BaseSettings):
     llm_output_token_limit: int = Field(default=512, ge=1, le=512)
     llm_generation_timeout_seconds: float = Field(default=120, gt=0)
     llm_runtime_timeout_seconds: float = Field(default=130, gt=0)
+    llm_runtime_probe_timeout_seconds: float = Field(default=5, gt=0)
     llm_max_concurrency: int = Field(default=1, ge=1, le=1)
 
     @field_validator("llm_service_token")
@@ -61,4 +62,6 @@ class RPiSettings(BaseSettings):
             raise ValueError("LLM_CONTEXT_TOKENS must exceed the output limit")
         if self.llm_runtime_timeout_seconds <= self.llm_generation_timeout_seconds:
             raise ValueError("runtime timeout must exceed generation timeout")
+        if self.llm_runtime_probe_timeout_seconds >= self.llm_generation_timeout_seconds:
+            raise ValueError("probe timeout must be shorter than generation timeout")
         return self
