@@ -6,6 +6,7 @@ import httpx
 import pytest
 
 from rpi_llm.config import RPiSettings
+from rpi_llm.cts import State
 from rpi_llm.errors import RuntimeUncertain
 from rpi_llm.lease import RuntimeLease
 from rpi_llm.main import create_app
@@ -162,6 +163,48 @@ async def test_external_runtime_activity_cannot_be_queued_by_adapter(api):
     assert runtime.calls == 0
     runtime.idle = True
     assert (await client.get("/internal/v1/health", headers=headers)).status_code == 200
+
+
+async def test_timed_out_inference_is_busy_until_worker_finishes(tmp_path):
+    config = RPiSettings(
+        _env_file=None,
+        llm_service_token="s" * 32,
+        llm_model_path=tmp_path / "gemma.gguf",
+        llm_context_tokens=100,
+        llm_output_token_limit=20,
+        llm_generation_timeout_seconds=0.02,
+        llm_runtime_timeout_seconds=0.04,
+        llm_runtime_probe_timeout_seconds=0.005,
+    )
+    runtime = FakeRuntime()
+    runtime.gate = asyncio.Event()
+    app = create_app(config, runtime)
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://rpi.test"
+        ) as client:
+            headers = {"Authorization": "Bearer " + "s" * 32}
+            try:
+                response = await client.post(
+                    "/internal/v1/generate", json=payload(), headers=headers
+                )
+                assert response.status_code == 504
+                assert app.state.queue.state == State.DRAINING_GENERATION
+                health = await client.get("/internal/v1/health", headers=headers)
+                assert health.status_code == 200 and health.json()["active_requests"] == 1
+                busy = await client.post("/internal/v1/generate", json=payload(), headers=headers)
+                assert busy.json()["error"]["code"] == "LLM_BUSY"
+            finally:
+                runtime.gate.set()
+
+            async def wait_ready():
+                while app.state.queue.state != State.READY:
+                    await asyncio.sleep(0)
+
+            await asyncio.wait_for(wait_ready(), 1)
+            assert (await client.get("/internal/v1/health", headers=headers)).json()[
+                "active_requests"
+            ] == 0
 
 
 def test_single_process_lease_rejects_second_wrapper():

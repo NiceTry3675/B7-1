@@ -125,6 +125,8 @@ async def test_uncertain_runtime_failure_quarantines_idle_slot():
     with pytest.raises(InternalError, match="LLM_INTERNAL_ERROR"):
         await runner.submit(request())
     assert queue.state == State.QUARANTINED and queue.active_requests == 0
+    with pytest.raises(RuntimeError, match="invalid_event"):
+        queue.model_ready()
     with pytest.raises(InternalError, match="LLM_NOT_READY"):
         await runner.submit(request())
     queue.recover_idle()

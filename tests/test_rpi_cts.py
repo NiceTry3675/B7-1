@@ -1,8 +1,11 @@
+from collections import Counter
+from itertools import product
+
 import pytest
 from pydantic import ValidationError
 
 from rpi_llm.config import RPiSettings
-from rpi_llm.cts import SLOT_CTS, Action, Edge, State, TransitionSystem
+from rpi_llm.cts import ACTION_SCOPES, SLOT_CTS, Action, Edge, NoEdgePolicy, State, TransitionSystem
 from rpi_llm.errors import InternalError
 from rpi_llm.queue import ComputeJobQueue
 from rpi_llm.schemas import GenerationRequest
@@ -29,7 +32,7 @@ def payload(**changes):
 
 
 def test_walker_reaches_each_edge_without_infinite_cycles():
-    paths = list(SLOT_CTS.walk(State.NOT_READY))
+    paths = list(SLOT_CTS.walk(State.NOT_READY, max_depth=5))
     assert {path[-1] for path in paths} == set(SLOT_CTS.edges)
     assert all(len(path) <= len(SLOT_CTS.edges) for path in paths)
     assert all(
@@ -38,6 +41,25 @@ def test_walker_reaches_each_edge_without_infinite_cycles():
         for index in range(len(path) - 1)
     )
     assert SLOT_CTS.step(State.READY, Action.DEADLINE) is None
+
+
+def test_every_state_action_pair_has_one_explicit_outcome():
+    SLOT_CTS.assert_total()
+    outcomes = Counter()
+    for state, action in product(State, Action):
+        target = SLOT_CTS.step(state, action)
+        no_edge = SLOT_CTS.no_edge(state, action)
+        assert (target is None) != (no_edge is None)
+        outcomes["edge" if target is not None else no_edge] += 1
+    assert len(State) * len(Action) == 84
+    assert outcomes == {
+        "edge": 15,
+        NoEdgePolicy.BUSY: 4,
+        NoEdgePolicy.NOT_READY: 2,
+        NoEdgePolicy.STALE: 7,
+        NoEdgePolicy.INVALID: 56,
+    }
+    assert {action for group in ACTION_SCOPES.values() for action in group} == set(Action)
 
 
 def test_walker_handles_state_with_no_edges_and_scoped_depth():
@@ -59,6 +81,12 @@ def test_transition_validator_rejects_ambiguous_or_unknown_edges():
         TransitionSystem((Edge(State.READY, "claim", State.COUNTING),))
     with pytest.raises(ValueError, match="unknown state"):
         SLOT_CTS.outgoing("ready")
+    with pytest.raises(ValueError, match="unclassified"):
+        TransitionSystem(()).assert_total()
+    with pytest.raises(ValueError, match="overlap"):
+        TransitionSystem((edge,), {(State.READY, Action.CLAIM): NoEdgePolicy.BUSY})
+    with pytest.raises(ValueError, match="invalid no-edge"):
+        TransitionSystem((), {(State.READY, Action.CLAIM): "busy"})
 
 
 def test_compute_queue_has_one_slot_and_no_waiting_list():
@@ -74,8 +102,24 @@ def test_compute_queue_has_one_slot_and_no_waiting_list():
     assert queue.state == State.DRAINING_COUNT
     with pytest.raises(InternalError, match="LLM_BUSY"):
         queue.claim()
-    queue.recover_idle()
+    assert queue.begin_inference() is False
+    assert queue.deadline() is False
+    with pytest.raises(RuntimeError, match="no CTS edge"):
+        queue.recover_idle()
     assert queue.state == State.DRAINING_COUNT
+
+
+def test_stale_events_are_distinct_from_invalid_events():
+    queue = ComputeJobQueue()
+    assert queue.model_lost() is False
+    assert queue.recover_idle() is False
+    with pytest.raises(RuntimeError, match="invalid_event"):
+        queue.deadline()
+    assert queue.model_ready() is True
+    assert queue.model_ready() is False
+    with pytest.raises(RuntimeError, match="invalid_event"):
+        queue.begin_inference()
+    assert queue.model_lost() is True
 
 
 @pytest.mark.parametrize(
