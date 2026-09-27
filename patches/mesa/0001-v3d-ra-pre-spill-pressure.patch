@@ -1,0 +1,27 @@
+diff --git a/src/broadcom/compiler/vir_register_allocate.c b/src/broadcom/compiler/vir_register_allocate.c
+index e7924a6ac79..208d4fd1ddd 100644
+--- a/src/broadcom/compiler/vir_register_allocate.c
++++ b/src/broadcom/compiler/vir_register_allocate.c
+@@ -21,6 +21,7 @@
+  * IN THE SOFTWARE.
+  */
+ 
++#include "util/log.h"
+ #include "util/ralloc.h"
+ #include "util/register_allocate.h"
+ #include "common/v3d_device_info.h"
+@@ -1590,6 +1591,14 @@ v3d_register_allocate(struct v3d_compile *c)
+         if (c->thread_index >= 1)
+                 c->thread_index--;
+ 
++        if (V3D_DBG(RA) && !c->devinfo->has_accumulators) {
++                mesa_logi("V3D RA pre-spill %s prog %d/%d: %u live, "
++                          "%u RF registers, %d threads",
++                          vir_get_stage_name(c), c->program_id, c->variant_id,
++                          vir_get_max_temps(c), PHYS_COUNT >> c->thread_index,
++                          c->threads);
++        }
++
+         c->g = ra_alloc_interference_graph(c->compiler->regs, num_ra_nodes);
+         ra_set_select_reg_callback(c->g, v3d_ra_select_callback, &callback_data);
+ 

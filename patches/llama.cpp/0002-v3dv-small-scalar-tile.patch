@@ -1,0 +1,14 @@
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index a502011..c05c016 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -4296,6 +4296,9 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+             // Xe2/Xe3 with coopmat enabled - warptile performance tuning
+             l_warptile = { 512, 128, 128, 16, subgroup_size_8, 32, 2, tm_m, tn_m, tk_m, subgroup_size_8 };
+             l_warptile_mmq = { 512, 128, 128, 32, subgroup_size_8, 32, 2, tm_m, tn_m, tk_m, subgroup_size_8 };
++        } else if (device->architecture == BRCM_VC7 && device->subgroup_size == 16 && !device->coopmat_support) {
++            // Two warps cover BN=32 with 16 columns each.
++            s_warptile[5] = 16;
+         }
+ 
+         l_mmq_wg_denoms = l_wg_denoms = {128, 128, 1 };
