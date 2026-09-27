@@ -1,10 +1,10 @@
 # 위인 챗봇 API 설계서
 
-- 버전: 0.3 (구현 전 설계 초안)
+- 버전: 0.3 (서비스·내부 API 계약)
 - 작성일: 2026-09-17
 - 대상: Gradio 프론트엔드, FastAPI 백엔드, SQLite, 라즈베리파이의 로컬 LLM
 - 기준: [프로젝트 요구사항](requirement.md), 2026-09-14 회의록, 이후 합의한 챗봇 방식·로컬 LLM 사용·팀 역할 분담
-- 이 문서의 URL, 필드, 제한값, 인증 방식은 구현을 위한 제안이다. 아직 구현되거나 검증된 API는 아니다.
+- 서비스 API와 RPi 어댑터 API는 구현되어 있다. 실제 Gemma 실행·배포 검증은 별도 단계다.
 
 ### 0.3 변경 사항
 
@@ -475,7 +475,7 @@ AI를 기다리는 동안 SQLite 쓰기 트랜잭션을 열어 두지 않는다.
 
 ### 6.4 라즈베리파이 내부 LLM API
 
-이 절은 이재훈과 이진걸이 함께 구현할 **프로젝트 자체 규격**이다. 특정 모델 런타임에서 기본 제공하는 API라고 가정하지 않는다. 예를 들어 llama.cpp의 HTTP 서버를 선택하면 이재훈이 내부 래퍼에서 해당 런타임 요청·응답을 변환한다. 실행기와 모델은 아직 미정이다. [llama.cpp 서버 공식 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+이 절은 **프로젝트 자체 규격**이다. `rpi_llm/` 어댑터는 llama.cpp HTTP 서버의 요청·응답을 변환하고, Gemma 3 1B GGUF를 설정 대상으로 삼는다. 실제 모델 실행과 성능은 아직 검증하지 않았다. [llama.cpp 서버 공식 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 
 #### 공통 연결·인증
 
@@ -719,6 +719,8 @@ INFO db_save_success request_id=req_9f4c1d user_id=12 conversation_id=34 turn_id
 | `LLM_SERVICE_TOKEN` | 백엔드 + 라즈베리파이 | 동일한 서비스 인증 토큰, 필수 비밀값 |
 | `LLM_MODEL` | 백엔드 + 라즈베리파이 | 동일한 모델 별칭, 예: `local-advisor` |
 | `LLM_MODEL_PATH` | 라즈베리파이 | 실제 로컬 모델 파일 위치. 실행기에 맞춰 적용 |
+| `LLM_RUNTIME_URL` | 라즈베리파이 | llama-server의 loopback HTTP 주소 |
+| `LLM_RUNTIME_TIMEOUT_SECONDS` | 라즈베리파이 | runtime HTTP 제한, 초기 130초 |
 | `LLM_CONTEXT_TOKENS` | 백엔드 + 라즈베리파이 | 실제 로드한 컨텍스트 크기. 모델 및 메모리 측정 후 동일하게 확정 |
 | `LLM_MAX_OUTPUT_TOKENS` | 백엔드 | 요청 출력 예산, 초기 256 |
 | `LLM_OUTPUT_TOKEN_LIMIT` | 라즈베리파이 | 허용 출력 예산 상한, 초기 512 |
