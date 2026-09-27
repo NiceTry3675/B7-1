@@ -1,4 +1,4 @@
-"""Check or apply both bundled llama.cpp Vulkan patches in order."""
+"""Check or apply the bundled llama.cpp Vulkan patches in order."""
 
 import argparse
 import sys
@@ -15,6 +15,10 @@ PATCHES = (
     (
         ROOT / "patches/llama.cpp/0002-v3dv-small-scalar-tile.patch",
         "42d76a056bc8382260efe1b3f6a8cdb01960be01bdca1fcf33f36491ccfff7ee",
+    ),
+    (
+        ROOT / "patches/llama.cpp/0003-v3dv-packed-dot-small-tile.patch",
+        "636e8270644d36e506d5ee01b111b52c130035304bf68cefc6bcfe45fc5e679e",
     ),
 )
 

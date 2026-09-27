@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PATCHES = (
     (
         ROOT / "patches/mesa/0001-v3d-ra-pre-spill-pressure.patch",
-        "7c176afffe24ce04e91663ab922ae9e93edbe05ca2ca1df06d91ce11239bae2b",
+        "4cfb7a616f3269af0ba7d05bba5ce85921d1f1647832f73a1f7a1bb8911ecad3",
     ),
 )
 
