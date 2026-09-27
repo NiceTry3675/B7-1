@@ -3,6 +3,7 @@
 from collections import deque
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import product
 
 
 class State(StrEnum):
@@ -28,6 +29,13 @@ class Action(StrEnum):
     LATE_FINISHED = "late_finished"
     LATE_UNKNOWN = "late_unknown"
     RUNTIME_IDLE = "runtime_idle"
+
+
+class NoEdgePolicy(StrEnum):
+    BUSY = "reject_busy"
+    NOT_READY = "reject_not_ready"
+    STALE = "ignore_stale"
+    INVALID = "invalid_event"
 
 
 @dataclass(frozen=True)
@@ -57,7 +65,7 @@ EDGES = (
 
 
 class TransitionSystem:
-    def __init__(self, edges=EDGES):
+    def __init__(self, edges=EDGES, no_edges=None):
         self.edges = tuple(edges)
         self._index = {}
         for edge in self.edges:
@@ -69,6 +77,17 @@ class TransitionSystem:
             if key in self._index:
                 raise ValueError("duplicate state/action edge")
             self._index[key] = edge
+        self._no_edges = dict(no_edges or {})
+        for key, policy in self._no_edges.items():
+            if (
+                len(key) != 2
+                or not isinstance(key[0], State)
+                or not isinstance(key[1], Action)
+                or not isinstance(policy, NoEdgePolicy)
+            ):
+                raise ValueError("invalid no-edge policy")
+            if key in self._index:
+                raise ValueError("edge and no-edge policy overlap")
 
     def outgoing(self, state):
         if not isinstance(state, State):
@@ -80,6 +99,16 @@ class TransitionSystem:
             raise ValueError("unknown state or action")
         edge = self._index.get((state, action))
         return edge.target if edge is not None else None
+
+    def no_edge(self, state, action):
+        if not isinstance(state, State) or not isinstance(action, Action):
+            raise ValueError("unknown state or action")
+        return self._no_edges.get((state, action))
+
+    def assert_total(self):
+        missing = set(product(State, Action)) - self._index.keys() - self._no_edges.keys()
+        if missing:
+            raise ValueError(f"unclassified state/action pairs: {len(missing)}")
 
     def walk(self, start, max_depth=None):
         """Yield every reachable edge path, bounded even when the graph has cycles."""
@@ -104,4 +133,75 @@ class TransitionSystem:
                 pending.append((edge.target, next_path, used | {edge}))
 
 
-SLOT_CTS = TransitionSystem()
+EXPECTED_STATES = (
+    State.NOT_READY,
+    State.READY,
+    State.COUNTING,
+    State.GENERATING,
+    State.DRAINING_COUNT,
+    State.DRAINING_GENERATION,
+    State.QUARANTINED,
+)
+EXPECTED_ACTIONS = (
+    Action.MODEL_READY,
+    Action.MODEL_LOST,
+    Action.CLAIM,
+    Action.CONTEXT_VALID,
+    Action.CONTEXT_REJECTED,
+    Action.COUNT_FAILED,
+    Action.INFERENCE_FINISHED,
+    Action.INFERENCE_UNKNOWN,
+    Action.DEADLINE,
+    Action.LATE_FINISHED,
+    Action.LATE_UNKNOWN,
+    Action.RUNTIME_IDLE,
+)
+if tuple(State) != EXPECTED_STATES or tuple(Action) != EXPECTED_ACTIONS:
+    raise ValueError("update the CTS no-edge audit when states or actions change")
+
+ACTION_SCOPES = {
+    "readiness": (Action.MODEL_READY, Action.MODEL_LOST),
+    "admission": (Action.CLAIM,),
+    "count": (Action.CONTEXT_VALID, Action.CONTEXT_REJECTED, Action.COUNT_FAILED),
+    "generation": (Action.INFERENCE_FINISHED, Action.INFERENCE_UNKNOWN),
+    "timeout_recovery": (
+        Action.DEADLINE,
+        Action.LATE_FINISHED,
+        Action.LATE_UNKNOWN,
+        Action.RUNTIME_IDLE,
+    ),
+}
+scoped_actions = [action for actions in ACTION_SCOPES.values() for action in actions]
+if len(scoped_actions) != len(Action) or set(scoped_actions) != set(Action):
+    raise ValueError("each CTS action must belong to exactly one audit scope")
+
+NO_EDGE_OVERRIDES = {
+    (State.NOT_READY, Action.CLAIM): NoEdgePolicy.NOT_READY,
+    (State.QUARANTINED, Action.CLAIM): NoEdgePolicy.NOT_READY,
+    **{
+        (state, Action.CLAIM): NoEdgePolicy.BUSY
+        for state in (
+            State.COUNTING,
+            State.GENERATING,
+            State.DRAINING_COUNT,
+            State.DRAINING_GENERATION,
+        )
+    },
+    (State.NOT_READY, Action.MODEL_LOST): NoEdgePolicy.STALE,
+    (State.READY, Action.MODEL_READY): NoEdgePolicy.STALE,
+    (State.NOT_READY, Action.RUNTIME_IDLE): NoEdgePolicy.STALE,
+    (State.READY, Action.RUNTIME_IDLE): NoEdgePolicy.STALE,
+    (State.DRAINING_COUNT, Action.CONTEXT_VALID): NoEdgePolicy.STALE,
+    (State.DRAINING_COUNT, Action.DEADLINE): NoEdgePolicy.STALE,
+    (State.DRAINING_GENERATION, Action.DEADLINE): NoEdgePolicy.STALE,
+}
+edge_keys = {(edge.source, edge.action) for edge in EDGES}
+if edge_keys & NO_EDGE_OVERRIDES.keys():
+    raise ValueError("CTS no-edge override overlaps a transition")
+SLOT_NO_EDGES = {
+    pair: NO_EDGE_OVERRIDES.get(pair, NoEdgePolicy.INVALID)
+    for pair in product(State, Action)
+    if pair not in edge_keys
+}
+SLOT_CTS = TransitionSystem(EDGES, SLOT_NO_EDGES)
+SLOT_CTS.assert_total()

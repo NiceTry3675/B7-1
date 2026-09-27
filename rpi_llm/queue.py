@@ -1,6 +1,6 @@
 import asyncio
 
-from rpi_llm.cts import SLOT_CTS, Action, State
+from rpi_llm.cts import SLOT_CTS, Action, NoEdgePolicy, State
 from rpi_llm.errors import InternalError
 
 
@@ -18,24 +18,29 @@ class ComputeJobQueue:
     def _advance(self, action):
         target = SLOT_CTS.step(self.state, action)
         if target is None:
-            raise RuntimeError(f"invalid slot transition: {self.state}/{action}")
+            policy = SLOT_CTS.no_edge(self.state, action)
+            raise RuntimeError(f"no CTS edge: {self.state}/{action} ({policy})")
         self.state = target
 
     def model_ready(self):
-        if self.state == State.NOT_READY:
-            self._advance(Action.MODEL_READY)
+        if SLOT_CTS.no_edge(self.state, Action.MODEL_READY) == NoEdgePolicy.STALE:
+            return False
+        self._advance(Action.MODEL_READY)
+        return True
 
     def model_lost(self):
-        if self.state == State.READY:
-            self._advance(Action.MODEL_LOST)
+        if SLOT_CTS.no_edge(self.state, Action.MODEL_LOST) == NoEdgePolicy.STALE:
+            return False
+        self._advance(Action.MODEL_LOST)
+        return True
 
     def claim(self):
-        if self.state == State.READY:
-            self._advance(Action.CLAIM)
-            return
-        if self.state in {State.NOT_READY, State.QUARANTINED}:
+        policy = SLOT_CTS.no_edge(self.state, Action.CLAIM)
+        if policy == NoEdgePolicy.NOT_READY:
             raise InternalError("LLM_NOT_READY")
-        raise InternalError("LLM_BUSY")
+        if policy == NoEdgePolicy.BUSY:
+            raise InternalError("LLM_BUSY")
+        self._advance(Action.CLAIM)
 
     def attach(self, task):
         if self.state != State.COUNTING or self.active_task is not None:
@@ -43,13 +48,13 @@ class ComputeJobQueue:
         self.active_task = task
 
     def begin_inference(self):
-        if self.state == State.DRAINING_COUNT:
+        if SLOT_CTS.no_edge(self.state, Action.CONTEXT_VALID) == NoEdgePolicy.STALE:
             return False
         self._advance(Action.CONTEXT_VALID)
         return True
 
     def deadline(self):
-        if self.state in {State.DRAINING_COUNT, State.DRAINING_GENERATION}:
+        if SLOT_CTS.no_edge(self.state, Action.DEADLINE) == NoEdgePolicy.STALE:
             return False
         self._advance(Action.DEADLINE)
         return True
@@ -70,5 +75,9 @@ class ComputeJobQueue:
         self.active_task = None
 
     def recover_idle(self):
-        if self.state == State.QUARANTINED and self.active_task is None:
-            self._advance(Action.RUNTIME_IDLE)
+        if self.active_task is not None:
+            raise RuntimeError("cannot recover while a job is active")
+        if SLOT_CTS.no_edge(self.state, Action.RUNTIME_IDLE) == NoEdgePolicy.STALE:
+            return False
+        self._advance(Action.RUNTIME_IDLE)
+        return True
