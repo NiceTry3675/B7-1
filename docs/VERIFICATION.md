@@ -45,6 +45,9 @@
   small tile에서 2-warp `WN=32`의 2,048개 계산 좌표와 shared B row 63,
   `WN=16`의 1,024개 고유 좌표와 최고 row 31을 재현했습니다.
   한 warp인 nonquant matmul-id의 `WN=32` 유지도 확인했습니다.
+- `scripts.census_dot4x8`: 현재 Vulkan shader source의
+  `dotPacked4x8EXT` 호출 위치는 matvecq 40개, MMQ 14개, flash-attention
+  1개 파일 계열로 확인했습니다. 이는 정적 소스 위치 수이며 실제 실행 횟수는 아닙니다.
 - llama.cpp `1f368f3`와 Mesa `f6f72d4b21c`의 별도 깨끗한 작업트리에서
   patch bundle의 dry-run, 실제 적용, 결과 파일의 격리 작업트리 대조,
   재적용 감지, `git diff --check`를 통과했습니다. 원래 llama.cpp 작업트리의

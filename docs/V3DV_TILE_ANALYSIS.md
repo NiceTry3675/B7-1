@@ -47,7 +47,9 @@ after:  16 vec2 = 32 FP32 accumulator values per lane
 coordinate using these shader formulas. It confirms 1,024 unique cells in the
 patched 32×32 scalar and MMQ tiles, each written once, and B row indices at
 most 31. It also checks the one-warp `matmul-id` exception. It is a source-level
-arithmetic check, not a shader execution.
+arithmetic check, not a shader execution. For MMQ-id it checks local tile and
+shared-memory indices; it does not prove the expert `row_ids` lookup or final
+destination mapping.
 
 The V3D 7.x two-thread physical RF budget in Mesa is 64 registers. The old
 accumulator count alone reaches that number; addresses, caches, and loop state
