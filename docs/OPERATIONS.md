@@ -143,7 +143,37 @@ docker compose cp backend:/data/backups/chat-20260917.db ./backups/chat-20260917
 ```
 
 백업에는 계정·세션 해시·대화 내용이 있으므로 접근을 제한하고 별도 안전한 저장소에도 보관합니다.
-스크립트는 새 경로에만 저장하며 무결성을 검사합니다. 정기 백업 주기는 운영자가 설정합니다.
+스크립트는 새 경로에만 저장하며 무결성을 검사합니다.
+
+### 호스트 정기 백업
+
+`python3 -m scripts.manage_backup --directory /var/backups/b7`는 실행 중인 백엔드에서
+SQLite backup API로 스냅샷을 만들고 호스트로 꺼내 무결성 검사 후 게시합니다.
+Python 표준 라이브러리와 Docker만 필요합니다. 백엔드 이미지에 최신 스크립트를 먼저 반영하세요.
+백엔드가 중지되었거나 복사가 실패하면 기존 백업을 정리하지 않으며 종료 코드 1을 반환합니다.
+같은 보관 디렉터리의 동시 작업은 파일 잠금으로 거부합니다.
+
+기본 보관은 14일이며 최신 3개는 기간과 관계없이 유지합니다. `--retention-days`,
+`--keep-at-least`로 조정합니다. 이 도구가 사용하는 `chat-시각-난수.db` 이름의 일반 파일만
+정리하며 수동 백업·심볼릭 링크는 건드리지 않습니다. 백업은 0600 권한으로 저장합니다.
+컨테이너 내부 임시 스냅샷은 작업 후 제거합니다. 호스트 백업 경로는 DB 볼륨과 분리하고,
+서버 전체 장애에도 대비하려면 별도 저장소로 복제하는 운영 절차를 추가하세요.
+
+Linux/systemd 배포에는 `deploy/systemd/b7-backup.service`와 `.timer`를 제공합니다.
+서비스의 `/srv/B7-1`을 실제 체크아웃 경로로, `/var/backups/b7`를 보관 경로로 수정한 뒤 설치합니다.
+root로 실행되므로 체크아웃과 상위 디렉터리는 신뢰할 수 있는 운영자만 쓸 수 있어야 합니다.
+
+```bash
+sudo install -m 0644 deploy/systemd/b7-backup.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now b7-backup.timer
+sudo systemctl start b7-backup.service
+sudo journalctl -u b7-backup.service --since today
+```
+
+예약 시각은 호스트 시간대의 매일 02:30 이후 최대 10분 지연이며, 놓친 실행은 다음 기동 때 수행합니다.
+중지하려면 `sudo systemctl disable --now b7-backup.timer`를 사용합니다.
+서비스 실행 결과와 백업 파일 생성 여부를 확인한 뒤 운영에 사용하세요. 이번 변경에서는 실행하지 않았습니다.
 
 복원은 다음 절차를 따릅니다.
 
