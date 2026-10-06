@@ -120,6 +120,24 @@ def stack(tmp_path):
 
 def test_full_stack_bootstrap_https_and_persistence(stack):
     run, certificates = stack
+    run(
+        "exec",
+        "-T",
+        "backend",
+        "python",
+        "-c",
+        "from importlib.util import find_spec; assert find_spec('gradio') is None; "
+        "assert find_spec('transformers') is not None",
+    )
+    run(
+        "exec",
+        "-T",
+        "frontend",
+        "python",
+        "-c",
+        "from importlib.util import find_spec; assert find_spec('gradio') is not None; "
+        "assert find_spec('transformers') is None",
+    )
     address = run("port", "proxy", "80").stdout.strip()
     with httpx.Client(trust_env=False, timeout=15) as client:
         assert client.get(f"http://{address}/nginx-health").status_code == 200

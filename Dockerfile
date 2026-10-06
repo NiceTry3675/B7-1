@@ -16,7 +16,7 @@ EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--no-access-log", "--proxy-headers", "--forwarded-allow-ips", "*"]
 
 FROM base AS frontend
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --extra frontend
 COPY app/__init__.py app/errors.py ./app/
 COPY frontend ./frontend
 USER app

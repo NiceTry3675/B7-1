@@ -37,6 +37,13 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access
 uv run python -m frontend.main
 ```
 
+기본 의존성은 API 실행에 필요한 패키지이며, Gradio는 `frontend` extra로 분리했습니다.
+개발용 `dev` 그룹에도 Gradio가 있어 위 개발 명령과 전체 테스트 구성을 유지합니다.
+Docker 백엔드는 `--no-dev --extra tokenizer`, 프론트는 `--no-dev --extra frontend`로
+설치하므로 백엔드 이미지에는 Gradio를, 프론트 이미지에는 Transformers를 설치하지 않습니다.
+호스트에서 개발 도구 없이 프론트만 실행하려면
+`uv run --no-dev --extra frontend python -m frontend.main`을 사용합니다.
+
 - 화면: <http://127.0.0.1:7860>
 - API 문서: <http://127.0.0.1:8000/docs>
 - 프로세스 확인: <http://127.0.0.1:8000/api/v1/health>
@@ -143,6 +150,14 @@ Docker Engine이 있는 환경에서는 실제 NGINX 컨테이너의 HTTP/HTTPS�
 ```bash
 RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
 ```
+
+전체 Compose의 이미지·HTTPS 연결·영속성 검증 코드는
+`RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py`로 별도 실행합니다.
+실행 환경과 데이터 격리 방식은 [운영 가이드](docs/OPERATIONS.md#전체-compose-검증-환경)를 참고하세요.
+
+배포 전 설정 점검, 정기 백업·복원, 인증서 갱신 예약, 통합 상태 점검 도구도
+[운영 가이드](docs/OPERATIONS.md)에 정리되어 있습니다. 추가된 배포·운영 작업의
+실행 검증 여부는 [검증 기록](docs/VERIFICATION.md)을 확인하세요.
 
 테스트는 임시 DB와 테스트 전용 LLM 응답을 사용하며, 실제 모델을 호출하지 않습니다.
 검증 범위에는 두 사용자 격리, 만료·폐기 토큰, 동시 전송, 실패 재요청, 최근 문맥,
