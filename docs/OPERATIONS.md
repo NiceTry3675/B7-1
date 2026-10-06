@@ -122,6 +122,14 @@ NGINX 설정 확인: `docker compose exec proxy nginx -t`.
 공식 참고: [NGINX WebSocket 프록시](https://nginx.org/en/docs/http/websocket.html),
 [Certbot webroot·갱신](https://eff-certbot.readthedocs.io/en/stable/using.html).
 
+## 컨테이너 로그 보관
+
+모든 Compose 서비스는 `json-file` 드라이버에 파일당 `DOCKER_LOG_MAX_SIZE=10m`,
+컨테이너당 `DOCKER_LOG_MAX_FILES=3`을 기본 적용합니다. 오래된 로그는 순환 삭제되며
+이는 컨테이너 표준 출력·오류에만 적용됩니다. DB·백업·호스트의 cron 로그는 별도입니다.
+설정을 바꾸면 `docker compose up -d --force-recreate`로 컨테이너를 재생성해야 적용됩니다.
+조회는 기존처럼 `docker compose logs --tail 100 backend frontend proxy`를 사용합니다.
+
 ## 백업과 복원
 
 실행 중인 SQLite 파일이나 WAL 파일을 단순 복사하지 않고 SQLite backup API를 사용합니다.

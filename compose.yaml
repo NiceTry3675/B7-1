@@ -1,5 +1,12 @@
+x-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
 services:
   backend:
+    logging: *service-logging
     build:
       context: .
       target: backend
@@ -32,6 +39,7 @@ services:
       retries: 3
     stop_grace_period: 150s
   frontend:
+    logging: *service-logging
     build:
       context: .
       target: frontend
@@ -54,6 +62,7 @@ services:
       retries: 3
       start_period: 30s
   proxy:
+    logging: *service-logging
     build: ./deploy/nginx
     restart: unless-stopped
     depends_on:
@@ -74,6 +83,7 @@ services:
       timeout: 5s
       retries: 3
   certbot:
+    logging: *service-logging
     image: certbot/certbot:v5.8.0
     profiles: [tls]
     environment:

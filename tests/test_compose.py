@@ -37,6 +37,8 @@ def stack(tmp_path):
         TURN_STALE_SECONDS="210",
         SESSION_TTL_SECONDS="43200",
         LOG_LEVEL="INFO",
+        DOCKER_LOG_MAX_SIZE="10m",
+        DOCKER_LOG_MAX_FILES="3",
         TOKENIZER_HOST_PATH=str(tmp_path / "tokenizer"),
         COMPOSE_PROFILES="",
     )
