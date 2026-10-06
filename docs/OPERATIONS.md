@@ -242,6 +242,21 @@ sudo systemctl start b7-backup.timer
 
 ## 장애 확인
 
+### 운영 상태 통합 점검
+
+배포 호스트에서 `python3 -m scripts.check_operations --backup-directory /var/backups/b7`를
+실행하면 컨테이너 healthcheck, 외부 HTTPS 화면·API, 인증서 만료, 컨테이너 내부 SQLite,
+LLM 준비 상태와 최신 백업의 무결성·스키마를 모아서 확인합니다. Python 표준 라이브러리와
+Docker 접근 권한, 백업 읽기 권한이 필요합니다. `--json`은 자동화용 결과입니다.
+하나라도 실패하면 종료 코드 1이며 비밀값·HTTP 오류 원문·대화 내용은 출력하지 않습니다.
+
+기본 인증서 잔여 기간은 14일 이상, 백업 최대 경과 시간은 26시간입니다.
+`--min-cert-days`, `--max-backup-age-hours`로 조정합니다. 백업 예약을 설치하지 않았다면
+백업 항목이 실패하는 것이 정상입니다. LLM 미설정·미준비도 실패로 보고합니다.
+점검은 생성·재시작·갱신·백업·복원을 수행하지 않으며, LLM에는 health만 요청합니다.
+LLM 점검은 최대 150초 기다릴 수 있습니다. API health 성공과 별개로 DB를 읽어 검사합니다.
+호스트에서의 HTTPS 성공은 다른 외부 네트워크에서의 접속 성공을 보장하지 않습니다.
+
 ### 전체 Compose 검증 환경
 
 `RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py`는 실제 세 이미지의 빌드와
