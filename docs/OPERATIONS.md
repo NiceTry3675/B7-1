@@ -147,6 +147,17 @@ docker compose cp backend:/data/backups/chat-20260917.db ./backups/chat-20260917
 
 ## 장애 확인
 
+### 전체 Compose 검증 환경
+
+`RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py`는 실제 세 이미지의 빌드와
+인증서 준비 전 기동, 임시 인증서를 통한 HTTPS, 회원가입·로그인·질문 실패 기록,
+프론트 컨테이너의 API 연결, 백엔드 재생성 후 데이터 보존을 확인하도록 작성되어 있습니다.
+CI의 `compose-smoke` 작업도 같은 검증을 사용합니다. Docker Engine과 OpenSSL이 필요합니다.
+고유 Compose 프로젝트·임시 볼륨·임시 인증서·임의의 로컬 포트를 사용하며 운영 `.env`를
+읽지 않습니다. 테스트 종료 시 해당 테스트 프로젝트의 볼륨과 이미지만 제거합니다.
+LLM 연결은 비워 두므로 실제 추론·공인 인증서 발급·실제 라즈베리파이 연동은 검증하지 않습니다.
+이 작업에서 검증 코드는 추가했지만 실행하지 않았습니다. 통과 여부는 실행 후 기록해야 합니다.
+
 화면 문의 번호와 `X-Request-ID`로 `request_received`, `db_save_success/failure`,
 `ai_call_start/success/failure`를 연결합니다. 질문·답변 원문과 비밀번호·토큰은 운영 로그에 출력하지 않습니다.
 서비스 재시작 시 또는 10초 정리 작업에서 생성 후 210초를 넘긴 `processing`을
