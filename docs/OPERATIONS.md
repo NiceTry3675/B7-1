@@ -175,7 +175,38 @@ sudo journalctl -u b7-backup.service --since today
 중지하려면 `sudo systemctl disable --now b7-backup.timer`를 사용합니다.
 서비스 실행 결과와 백업 파일 생성 여부를 확인한 뒤 운영에 사용하세요. 이번 변경에서는 실행하지 않았습니다.
 
-복원은 다음 절차를 따릅니다.
+### 복원 도구
+
+`python3 -m scripts.restore_db 백업.db 대상.db`는 무결성·외래 키·스키마 버전과 필드를
+검사하기만 합니다. 실제 복원에는 `--apply --services-stopped` 두 옵션이 필요합니다.
+`--services-stopped`는 운영자의 확인이며 도구가 다른 DB 접근 프로세스를 자동 검출하지는 않습니다.
+복원 전에 백업 타이머와 진행 중인 백업 작업을 중지하고 백엔드·프론트도 중지해야 합니다.
+
+도구는 임시 파일에서 백업을 재검사하고, 기존 DB와 `-wal`, `-shm`, `-journal`을 같은
+디렉터리의 `pre-restore-시각-난수/`에 보존한 뒤 교체합니다. 파일 이동·설치 실패 시
+이미 옮긴 원본을 되돌립니다. 강제 전원 종료까지 원자적으로 복구하는 도구는 아니므로
+중단되면 보존 디렉터리와 대상 파일을 확인한 뒤 서비스를 재개하세요.
+보존 디렉터리는 백업 보관 정책으로 삭제되지 않습니다. 복원 DB는 0600 권한이며
+기존 UID/GID를 유지하거나 `--uid`, `--gid`로 둘 다 지정합니다.
+
+Compose에서는 호스트 백업을 읽기 전용으로 마운트한 일회성 컨테이너로 복원할 수 있습니다.
+아래 경로와 파일명은 실제 백업에 맞게 바꾸세요. 실행 전 검증과 중지 순서를 지킵니다.
+
+```bash
+python3 -m scripts.restore_db /var/backups/b7/선택한백업.db /tmp/restore-target.db
+sudo systemctl stop b7-backup.timer b7-backup.service
+docker compose stop frontend backend
+docker compose run --rm --no-deps --user 0 \
+  -v /var/backups/b7:/restore:ro backend \
+  python -m scripts.restore_db /restore/선택한백업.db /data/chat.db \
+  --apply --services-stopped --uid 10001 --gid 10001
+# 복원 성공을 확인한 뒤에만 재개합니다.
+docker compose up -d --wait backend frontend
+sudo systemctl start b7-backup.timer
+```
+
+사용자 계정·대화 조회와 DB 접근 권한을 확인한 뒤 복원 완료로 기록합니다.
+자동화 없이 수동으로 복원할 경우에도 다음 절차를 따릅니다.
 
 1. 프론트·백엔드를 중지하고 기존 볼륨/DB를 별도 보관합니다.
 2. 백업의 `PRAGMA integrity_check`가 `ok`인지 확인합니다.
