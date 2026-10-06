@@ -98,11 +98,36 @@ health 성공 후에도 generate는 `AI_BUSY` 등을 반환할 수 있습니다.
 ## 인증서 자동 갱신과 기존 배포 교체
 
 Certbot 컨테이너 자체는 스케줄러를 실행하지 않습니다. 최초 발급 후 다음 검사를 수행하고,
-배포 호스트에서 Docker 실행 권한이 있는 계정의 crontab에 하루 두 번 갱신 작업을 등록합니다.
+배포 호스트에 systemd 타이머 또는 cron 중 하나로 하루 두 번 갱신 작업을 등록합니다.
 
 ```bash
 python3 -m scripts.manage_tls renew --dry-run
 ```
+
+Linux/systemd 호스트에서는 `deploy/systemd/b7-tls-renew.service`의 `/srv/B7-1`을
+실제 체크아웃 경로로 바꾼 뒤 아래와 같이 설치합니다. `/usr/bin/flock`도 필요합니다.
+root로 실행하는 체크아웃과 상위 디렉터리는 신뢰할 수 있는 운영자만 수정할 수 있어야 합니다.
+타이머는 호스트 시간대 03:17, 15:17 이후 최대 10분 지연하여 실행하고, 놓친 실행을
+다음 기동 때 수행합니다. 서비스 중복 실행은 파일 잠금으로 거부합니다.
+
+```bash
+sudo install -m 0644 deploy/systemd/b7-tls-renew.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now b7-tls-renew.timer
+sudo systemctl start b7-tls-renew.service
+sudo systemctl list-timers b7-tls-renew.timer
+sudo systemctl show b7-tls-renew.service -p Result -p ExecMainStatus
+sudo journalctl -u b7-tls-renew.service --since today
+```
+
+실패하면 service는 실패 상태와 비정상 종료 코드를 남깁니다. 원인을 해결하고
+`sudo systemctl start b7-tls-renew.service`로 다시 실행하세요. 타이머 자체가 활성 상태라는
+사실은 갱신 성공을 의미하지 않습니다. 결과·만료일도 확인해야 합니다.
+예약 중지는 `sudo systemctl disable --now b7-tls-renew.timer`입니다.
+예약 작업은 대화형 셸의 환경 변수를 상속하지 않으므로 Compose 프로젝트 이름과 설정을
+운영 `.env`에 일관되게 지정하세요. 백업 타이머에도 같은 규칙이 적용됩니다.
+
+systemd 대신 cron을 사용한다면 다음 예시를 적용하고 systemd 타이머는 비활성화합니다.
 
 ```cron
 17 3,15 * * * cd /srv/B7-1 && /usr/bin/python3 -m scripts.manage_tls renew >> /srv/B7-1/tls-renew.log 2>&1
@@ -112,6 +137,7 @@ python3 -m scripts.manage_tls renew --dry-run
 갱신은 만료가 가까운 인증서에만 수행됩니다. 성공 후 `nginx -t`와 무중단 reload로 새 인증서를 적용하며,
 Certbot 실패 시 reload하지 않습니다. 갱신 로그·실패 알림을 운영 환경에서 확인하세요.
 개인 키가 포함된 `tls_certificates` 볼륨은 Git에 넣지 않고 접근을 제한합니다.
+이 변경에서는 예약 파일과 절차만 추가했으며, 시스템 설치·인증서 갱신은 실행하지 않았습니다.
 
 기존 배포를 바꿀 때도 같은 Compose 프로젝트 이름과 `chat_data` 볼륨을 사용합니다.
 DB를 백업한 뒤 `docker compose up -d --build`로 프록시를 교체하고 위 최초 발급 절차를 수행합니다.
