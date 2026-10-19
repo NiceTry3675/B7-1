@@ -555,20 +555,24 @@ dependencies = [
     { name = "argon2-cffi" },
     { name = "email-validator" },
     { name = "fastapi" },
-    { name = "gradio" },
     { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.optional-dependencies]
+frontend = [
+    { name = "gradio" },
+]
 tokenizer = [
+    { name = "jinja2" },
     { name = "sentencepiece" },
     { name = "transformers" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "gradio" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "ruff" },
@@ -579,17 +583,19 @@ requires-dist = [
     { name = "argon2-cffi", specifier = ">=23.1,<26" },
     { name = "email-validator", specifier = ">=2.2,<3" },
     { name = "fastapi", specifier = ">=0.115,<1" },
-    { name = "gradio", specifier = ">=6,<7" },
+    { name = "gradio", marker = "extra == 'frontend'", specifier = ">=6,<7" },
     { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "jinja2", marker = "extra == 'tokenizer'", specifier = ">=3.1.6,<4" },
     { name = "pydantic-settings", specifier = ">=2.8,<3" },
     { name = "sentencepiece", marker = "extra == 'tokenizer'", specifier = ">=0.2,<1" },
     { name = "transformers", marker = "extra == 'tokenizer'", specifier = ">=4.50,<5" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
 ]
-provides-extras = ["tokenizer"]
+provides-extras = ["frontend", "tokenizer"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "gradio", specifier = ">=6,<7" },
     { name = "pytest", specifier = ">=8,<10" },
     { name = "pytest-asyncio", specifier = ">=0.25,<2" },
     { name = "ruff", specifier = ">=0.11,<1" },

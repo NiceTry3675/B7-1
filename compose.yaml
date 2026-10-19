@@ -1,5 +1,12 @@
+x-logging: &service-logging
+  driver: json-file
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-10m}"
+    max-file: "${DOCKER_LOG_MAX_FILES:-3}"
+
 services:
   backend:
+    logging: *service-logging
     build:
       context: .
       target: backend
@@ -32,6 +39,7 @@ services:
       retries: 3
     stop_grace_period: 150s
   frontend:
+    logging: *service-logging
     build:
       context: .
       target: frontend
@@ -54,6 +62,7 @@ services:
       retries: 3
       start_period: 30s
   proxy:
+    logging: *service-logging
     build: ./deploy/nginx
     restart: unless-stopped
     depends_on:
@@ -61,28 +70,12 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
-      - "443:443"
     environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
       PROXY_TIMEOUT_SECONDS: ${PROXY_TIMEOUT_SECONDS:-180}
-    volumes:
-      - tls_certificates:/etc/letsencrypt:ro
-      - acme_webroot:/var/www/certbot:ro
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1/nginx-health"]
       interval: 15s
       timeout: 5s
       retries: 3
-  certbot:
-    image: certbot/certbot:v5.8.0
-    profiles: [tls]
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
-      ACME_EMAIL: ${ACME_EMAIL:-}
-    volumes:
-      - tls_certificates:/etc/letsencrypt
-      - acme_webroot:/var/www/certbot
 volumes:
   chat_data:
-  tls_certificates:
-  acme_webroot:

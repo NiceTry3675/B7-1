@@ -4,6 +4,7 @@ import argparse
 import os
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 
@@ -17,9 +18,10 @@ def backup(source: Path, destination: Path):
     os.close(descriptor)
     temporary = Path(name)
     try:
-        with sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True) as src:
-            with sqlite3.connect(temporary) as dst:
+        with closing(sqlite3.connect(source.resolve().as_uri() + "?mode=ro", uri=True)) as src:
+            with closing(sqlite3.connect(temporary)) as dst:
                 src.backup(dst)
+                dst.execute("PRAGMA journal_mode=DELETE")
                 if dst.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
                     raise ValueError("백업 무결성 검사에 실패했습니다.")
         # Link refuses to overwrite an existing backup even if another process created it.

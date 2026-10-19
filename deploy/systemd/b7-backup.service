@@ -1,0 +1,12 @@
+[Unit]
+Description=B7 SQLite backup export and retention
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/srv/B7-1
+ExecStart=/usr/bin/python3 -m scripts.manage_backup --directory /var/backups/b7 --retention-days 14 --keep-at-least 3
+UMask=0077
+TimeoutStartSec=15min

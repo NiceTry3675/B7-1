@@ -12,5 +12,15 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
-      - run: docker compose --profile tls config --quiet
+      - run: docker compose config --quiet
       - run: RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.5"
+      - run: uv sync --frozen --group dev
+      - run: RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py

@@ -151,5 +151,6 @@ last command performs one real model request and is intentionally gated by
 
 Finally verify two concurrent questions, runtime timeout/restart recovery,
 SQLite records after restart, Gemma latency and memory, and the externally
-reachable HTTPS UI on the actual deployment. The mock suite cannot establish
+reachable HTTP UI at the server's public IP on the actual deployment, as specified
+in [the API contract](../API_SPEC.md). The mock suite cannot establish
 those hardware, network, or deployment properties.

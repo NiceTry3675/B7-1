@@ -2,7 +2,8 @@
 
 로그인한 사용자가 위인을 선택하고 고민을 나누는 Gradio + FastAPI 서비스입니다.
 학생·진로와 일상의 선택을 고민하는 사용자를 위한 프로젝트이며,
-인증·사용자별 대화 기록·최근 문맥·오류 복구를 [API_SPEC.md](API_SPEC.md) v0.3에 맞춰 구현했습니다.
+인증·사용자별 대화 기록·최근 문맥·오류 복구를 구현했습니다.
+현재 서비스 계약과 공인 IP HTTP 배포 기준은 [API_SPEC.md](API_SPEC.md) v0.4에 정리했습니다.
 
 ## 구현 범위
 
@@ -11,7 +12,7 @@
 - SQLite WAL, 외래 키, 대화별 처리 중 턴 1개 제한, 질문 UUID 멱등성, 중단된 턴 정리
 - 최근 완료된 5개 턴 문맥, 정확한 토크나이저 기반 입력 예산, LLM HTTP 연동·오류 변환
 - Gradio 사용자별 상태, 모든 기록 페이지 조회, 결과 유실 복구, 수동 재시도, 중복 전송 차단
-- Docker Compose, NGINX HTTPS·Certbot 인증서 관리, 영속 볼륨, 온라인 백업, CI와 자동 테스트
+- Docker Compose, HTTP NGINX 프록시, 영속 볼륨, 온라인 백업, CI와 자동 테스트
 
 라즈베리파이 내부 API 어댑터와 BRCM/V3DV Vulkan·Mesa 연구 패치는 이 저장소에 포함했습니다.
 **llama.cpp 프로세스 제어, 모델 다운로드·로딩·실제 추론은 별도 작업입니다.**
@@ -41,6 +42,13 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1 --no-access
 uv run python -m frontend.main
 ```
 
+기본 의존성은 API 실행에 필요한 패키지이며, Gradio는 `frontend` extra로 분리했습니다.
+개발용 `dev` 그룹에도 Gradio가 있어 위 개발 명령과 전체 테스트 구성을 유지합니다.
+Docker 백엔드는 `--no-dev --extra tokenizer`, 프론트는 `--no-dev --extra frontend`로
+설치하므로 백엔드 이미지에는 Gradio를, 프론트 이미지에는 Transformers를 설치하지 않습니다.
+호스트에서 개발 도구 없이 프론트만 실행하려면
+`uv run --no-dev --extra frontend python -m frontend.main`을 사용합니다.
+
 - 화면: <http://127.0.0.1:7860>
 - API 문서: <http://127.0.0.1:8000/docs>
 - 프로세스 확인: <http://127.0.0.1:8000/api/v1/health>
@@ -56,9 +64,11 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
                                       └→ 비공개 네트워크 → RPi 내부 API 어댑터 → loopback llama-server
 ```
 
-배포 시 브라우저는 NGINX의 HTTPS 주소로 접속합니다. NGINX는 화면 요청을 Gradio로,
-`/api/v1/*`와 API 문서 요청을 FastAPI로 전달합니다. 인증서 최초 발급과 자동 갱신 등록은
-[운영 가이드](docs/OPERATIONS.md#docker-compose-배포)를 따릅니다.
+현재 배포 명세의 브라우저 접속 주소는 `http://<PUBLIC_IP>/`이며 NGINX의 TCP 80을 사용합니다.
+NGINX는 화면 요청을 Gradio로, `/api/v1/*`와 API 문서 요청을 FastAPI로 전달합니다.
+서비스용 도메인·DNS 등록·인증서 발급은 필요하지 않습니다.
+`compose.yaml`과 NGINX는 HTTP로 기동합니다.
+설정과 점검 절차는 [운영 가이드](docs/OPERATIONS.md#docker-compose-배포)를 참고하세요.
 
 | 경로 | 역할 |
 | --- | --- |
@@ -77,8 +87,8 @@ DB의 이전 대화 목록을 불러옵니다. 로그아웃은 현재 토큰만 
 | `frontend/controller.py` | 사용자별 상태, 응답 유실 확인, 재시도 |
 | `frontend/client.py` | 사용자별 Bearer 헤더, 전체 HTTP 제한 |
 | `tests/` | API·동시성·LLM 계약·프론트 흐름 검증 |
-| `deploy/nginx/` | NGINX 이미지, 인증서 유무에 따른 초기 기동·HTTPS 설정 |
-| `scripts/manage_tls.py` | Certbot 최초 발급·갱신 및 NGINX 인증서 적용 |
+| `compose.yaml` | HTTP 배포 구성 |
+| `deploy/nginx/` | HTTP 프록시와 설정 템플릿 |
 | `docs/OPERATIONS.md` | 배포, 환경 변수, 백업·복원·장애 처리 |
 | `docs/DB_GUIDE.md` | ERD와 DB 평가 방법 |
 
@@ -146,11 +156,22 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-Docker Engine이 있는 환경에서는 실제 NGINX 컨테이너의 HTTP/HTTPS·라우팅·실시간 응답도 검사합니다.
+Docker Engine이 있는 환경에서는 실제 NGINX 컨테이너의 HTTP·라우팅·실시간 응답도 검사합니다.
 
 ```bash
 RUN_PROXY_TESTS=1 uv run pytest -q tests/test_proxy.py
 ```
+
+전체 Compose의 이미지·인증서 없는 HTTP 연결·영속성 검증 코드는
+`RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py`로 별도 실행합니다.
+실행 환경과 데이터 격리 방식은 [운영 가이드](docs/OPERATIONS.md#전체-compose-검증-환경)를 참고하세요.
+
+배포 전 설정 점검, 정기 백업·복원, 통합 상태 점검 도구도
+[운영 가이드](docs/OPERATIONS.md)에 정리되어 있습니다. 추가된 배포·운영 작업의
+실행 검증 여부는 [검증 기록](docs/VERIFICATION.md)을 확인하세요.
+`check_deploy`와 `check_operations`는 HTTP 배포를 점검합니다.
+HTTP 운영 점검은 기본적으로 서버의 `http://127.0.0.1`을 사용하며,
+공인 IP로 점검하려면 `--http-url http://<PUBLIC_IP>`를 지정합니다. 다른 외부 네트워크의 접속도 확인해야 합니다.
 
 RPi 오프라인 검증은 `bash scripts/verify_rpi_offline.sh`로 실행합니다. 테스트는 임시 DB와
 테스트 전용 LLM 응답을 사용하며, 실제 모델을 호출하지 않습니다.
@@ -161,7 +182,7 @@ RPi 오프라인 검증은 `bash scripts/verify_rpi_offline.sh`로 실행합니�
 검증 범위에는 두 사용자 격리, 만료·폐기 토큰, 동시 전송, 실패 재요청, 최근 문맥,
 내부 오류 매핑, HTTP 전체 시간 제한, 응답 유실, 재시작 후 보존, 화면 구성 등이 포함됩니다.
 
-실제 라즈베리파이 연결·성능 측정과 공인 도메인의 HTTPS 배포 확인은 대상 환경에서 수행해야 합니다.
+실제 라즈베리파이 연결·성능 측정과 공인 IP의 HTTP 외부 접속 확인은 대상 환경에서 수행해야 합니다.
 실제 모델의 출력 품질·실기 추론 슬롯·중단은 이 구현의 모의 테스트 결과에 포함되지 않습니다.
 
 ## 팀 역할 및 협업
@@ -169,7 +190,7 @@ RPi 오프라인 검증은 `bash scripts/verify_rpi_offline.sh`로 실행합니�
 | 담당자 | 명세상의 역할 | 이 구현에서 준비한 영역 |
 | --- | --- | --- |
 | 이재훈 | 로컬 LLM·라즈베리파이 | 내부 API 어댑터, BRCM Vulkan 패치와 검증 가이드 |
-| 권순형 | 클라우드·배포 | Compose, HTTPS 프록시, 영속 볼륨, 백업 절차 |
+| 권순형 | 클라우드·배포 | Compose, NGINX 프록시, 영속 볼륨, 백업 절차 |
 | 이진걸 | 백엔드·DB | API 10개, 인증, SQLite, 문맥·LLM 클라이언트, 테스트 |
 | 임준현 | 프론트 | Gradio, 사용자 상태, 기록·실패·재시도 흐름 |
 
