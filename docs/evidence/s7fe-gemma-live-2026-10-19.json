@@ -1,0 +1,68 @@
+{
+  "tested_at": "2026-10-19T08:29:24.832907+00:00",
+  "tested_source_revision": "8b85b5b04e2a7ea96eb6ee8989b58da3eaddcc3f",
+  "client": "S7 FE, Debian 13 under Termux/PRoot, Python 3.13.5",
+  "flow": "Front Controller -> local HTTP FastAPI -> Pi5 Gemma -> tablet SQLite",
+  "model": {
+    "filename": "gemma-3-1b-it-qat-Q4_0.gguf",
+    "sha256": "ef60e4e91a738c99ae9976b050657dfe68a4007a0ccca121b55ec0c413dccd58",
+    "backend": "RPi5 CPU",
+    "runtime_revision": "b13d13e11bc3f347cd59db0060e15c67bdff96e1",
+    "context_tokens": 4096,
+    "max_output_tokens": 256,
+    "temperature": 0.7
+  },
+  "tokenizer": {
+    "repository": "unsloth/gemma-3-1b-it",
+    "revision": "5b11413a10db4e486ef16a20101fd028f8f2499c",
+    "samples": [
+      {
+        "local": 19,
+        "runtime": 19
+      },
+      {
+        "local": 40,
+        "runtime": 40
+      }
+    ]
+  },
+  "offline_checks": {
+    "passed": 136,
+    "skipped": 4,
+    "ruff_check": "passed",
+    "ruff_format": "75 files already formatted"
+  },
+  "functional_live_checks": {
+    "result": "passed",
+    "checks": {
+      "website_and_api_http": true,
+      "anonymous_blocked": true,
+      "signup_login": true,
+      "same_uuid_replays_saved_answer": true,
+      "two_real_gemma_turns": true,
+      "two_completed_turns_in_tablet_sqlite_wal": true,
+      "logout_revokes_token": true,
+      "saved_history_reloads_after_login": true,
+      "temporary_account_cleaned": true
+    }
+  },
+  "outputs": [
+    {
+      "question": "진로가 고민돼요. 무엇부터 생각하면 좋을까요?",
+      "answer": "자, 시작해 볼까요?\n\n**\"당신은 지금 어떤 문제에 직면하고 있나요? 그 문제에 대해 조금 더 자세히 말씀해주시겠어요?\"**",
+      "characters": 70,
+      "elapsed_seconds": 4.698
+    },
+    {
+      "question": "처음 말한 고민의 주제를 한 단어로 답해 주세요.",
+      "answer": "번아웃.",
+      "characters": 4,
+      "elapsed_seconds": 1.844
+    }
+  ],
+  "response_quality_limitations": {
+    "markdown_markers_in_plain_text_reply": true,
+    "followup_topic_did_not_match_initial_career_concern": true,
+    "scope": "Observed in this two-turn sample; no isolated model-size, quantization, or prompt comparison was performed."
+  }
+}
