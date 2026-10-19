@@ -1,3 +1,5 @@
+import pytest
+
 from scripts.check_deploy import validate
 
 
@@ -51,3 +53,22 @@ def test_llm_must_be_configured_unless_explicitly_disabled(tmp_path):
     checks = validate(value, allow_unconfigured_llm=True)
     assert not all(check.ok for check in checks)
     assert "secret-do-not-print" not in repr(checks)
+
+
+@pytest.mark.parametrize(
+    ("token", "accepted"),
+    [
+        pytest.param("x" * 31, False, id="short-ascii"),
+        pytest.param("x" * 32, True, id="minimum-ascii"),
+        pytest.param("ab12" * 16, True, id="encoded-random-token"),
+        pytest.param("x" * 31 + " ", False, id="trailing-whitespace"),
+        pytest.param("x" * 31 + "\n", False, id="newline"),
+        pytest.param("비밀" * 8, False, id="utf8-byte-count-is-not-ascii-length"),
+        pytest.param("x" * 31 + "é", False, id="non-ascii-at-minimum-length"),
+    ],
+)
+def test_preflight_service_token_matches_ascii_contract(tmp_path, token, accepted):
+    value = config(tmp_path)
+    value["services"]["backend"]["environment"]["LLM_SERVICE_TOKEN"] = token
+    result = {check.name: check for check in validate(value)}
+    assert result["llm_connection"].ok is accepted

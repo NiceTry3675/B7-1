@@ -14,7 +14,7 @@
 | `BACKEND_TIMEOUT_SECONDS` | 160; 프론트의 전체 HTTP 호출 제한 |
 | `GRADIO_SERVER_NAME`, `GRADIO_SERVER_PORT` | `127.0.0.1`, 7860 |
 | `LLM_BASE_URL` | 미설정; 사설망의 라즈베리파이 기본 주소 |
-| `LLM_SERVICE_TOKEN` | 미설정; 최소 32바이트 난수로 생성한 비밀 토큰 |
+| `LLM_SERVICE_TOKEN` | 미설정; 최소 32바이트 난수를 ASCII로 인코딩한 비밀 토큰. 공백 없이 32자 이상 |
 | `LLM_MODEL` | `local-advisor`; 양쪽에서 같은 별칭 사용 |
 | `LLM_TOKENIZER_PATH` | 미설정; 실제 모델과 동일한 로컬 토크나이저·템플릿 경로 |
 | `LLM_CONTEXT_TOKENS` | 4096; 제안값이므로 실제 모델과 맞출 것 |
@@ -44,6 +44,7 @@
 LLM 없이 계정·화면만 배포할 때는 `--allow-unconfigured-llm`을 명시합니다.
 이 경우에도 도메인·시간 제한·DB 설정 검사는 유지됩니다. DNS 연결과 컨테이너 UID의
 파일 접근 권한, 실제 토크나이저/템플릿 일치는 이 사전 점검만으로 보장하지 않습니다.
+서비스 토큰은 백엔드·RPi와 동일하게 공백 없는 32자 이상의 ASCII 문자열만 허용합니다.
 
 영속 디스크가 있는 단일 서버, Docker Engine + Compose, 서버에 연결된 도메인과 80/443 포트가 필요합니다.
 라즈베리파이와 클라우드는 VPN 등 암호화된 비공개 경로로 연결합니다.

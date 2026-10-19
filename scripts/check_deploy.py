@@ -97,8 +97,11 @@ def validate(config, *, allow_unconfigured_llm=False):
     checks.append(
         Check(
             "llm_connection",
-            bool(connection) and len(token.encode()) >= 32 and not any(c.isspace() for c in token),
-            "LLM 기본 주소와 서비스 토큰 형식을 확인합니다. 연결은 호출하지 않습니다.",
+            bool(connection)
+            and token.isascii()
+            and len(token) >= 32
+            and not any(c.isspace() for c in token),
+            "LLM 기본 주소와 공백 없는 32자 이상 ASCII 토큰 형식만 확인합니다.",
         )
     )
     mounts = [
