@@ -1,11 +1,19 @@
 # 위인 챗봇 API 설계서
 
-- 버전: 0.3 (서비스·내부 API 계약)
+- 버전: 0.4 (공인 IP HTTP 배포·서비스·내부 API 계약)
 - 작성일: 2026-09-17
+- 수정일: 2026-10-19
 - 대상: Gradio 프론트엔드, FastAPI 백엔드, SQLite, 라즈베리파이의 로컬 LLM
 - 기준: [프로젝트 요구사항](requirement.md), 2026-09-14 회의록, 이후 합의한 챗봇 방식·로컬 LLM 사용·팀 역할 분담
 - 서비스 API와 RPi 어댑터 API는 구현되어 있다. 실제 Gemma 실행·배포 검증은 별도 단계다.
 - Front·Backend·RPi의 상태·전이·간선 없는 칸과 오프라인 검증은 [서비스 CTS](docs/SERVICE_CTS.md)에 정리했다.
+
+### 0.4 변경 사항
+
+- 외부 접속 주소를 공인 IP 기반 `http://<PUBLIC_IP>/`로 정하고 TCP 80을 사용한다.
+- 도메인·DNS 등록·TLS 인증서 발급과 갱신 설정은 배포 구성에 포함하지 않는다.
+- 브라우저와 클라우드 서버 사이의 HTTP 연결은 암호화되지 않는다. 클라우드와 라즈베리파이의 내부 연결에는 6.4절의 비공개 연결·서비스 인증 규칙을 적용한다.
+- Compose·NGINX는 HTTP로 기동한다. 배포 확인 기준은 공인 IP의 HTTP 화면·API 접근이다.
 
 ### 0.3 변경 사항
 
@@ -25,7 +33,7 @@
 - 위인 목록 조회 및 위인을 지정한 새 대화 생성
 - 질문 전송, AI 답변 표시, 대화 기록 저장·조회
 - 빈 입력·길이 검증, AI 오류·시간 초과 안내, 운영 로그
-- Gradio 단일 UI 및 외부 접속 가능한 배포
+- Gradio 단일 UI 및 공인 IP의 HTTP 주소로 외부 접속 가능한 배포
 - 라즈베리파이 로컬 LLM 및 클라우드 백엔드와의 내부 HTTP API 연동
 
 ### 이번 MVP에서 제외
@@ -42,7 +50,7 @@
 
 ```text
 사용자 브라우저
-    ↕ Gradio 화면 및 이벤트
+    ↕ 공인 IP의 HTTP :80 / Gradio 화면 및 이벤트
 Gradio Python 콜백
     ↕ HTTP JSON + 사용자별 Bearer 토큰
 클라우드 FastAPI /api/v1
@@ -60,7 +68,7 @@ Gradio와 서비스 FastAPI는 동일 클라우드 서버에 배포할 수 있�
 | 담당자 | 확정 역할 | 해당 역할의 세부 작업안 |
 | --- | --- | --- |
 | 이재훈 | 로컬 LLM(라즈베리파이) | 모델·양자화·추론 런타임 선정, 모델 로딩, 내부 LLM API, 생성 중단·동시 처리 제어, 성능·응답 품질 확인 |
-| 권순형 | 클라우드 및 배포 | 외부 URL·HTTPS, 클라우드 ↔ 라즈베리파이 연결, 서비스 토큰 주입, 프로세스 운영, SQLite 영속 저장·백업 |
+| 권순형 | 클라우드 및 배포 | 공인 IP HTTP URL·프록시, 클라우드 ↔ 라즈베리파이 연결, 서비스 토큰 주입, 프로세스 운영, SQLite 영속 저장·백업 |
 | 이진걸 | 백엔드 및 DB | 서비스 FastAPI, 인증·소유권·검증, SQLite 스키마·저장·조회, 위인 프롬프트·문맥 구성, 내부 LLM API 호출, 오류 처리, API 명세·DB 확인 가이드 |
 | 임준현 | 프론트 | Gradio 화면, 사용자별 상태, API 호출, 로딩·오류 안내, 기록 표시, 화면 흐름 확인 |
 
@@ -80,6 +88,7 @@ Gradio와 서비스 FastAPI는 동일 클라우드 서버에 배포할 수 있�
 
 | 항목 | 규칙 |
 | --- | --- |
+| 외부 서비스 주소 | `http://<PUBLIC_IP>/`, TCP 80; `<PUBLIC_IP>`는 배포 서버의 실제 공인 IPv4 |
 | 기본 경로 | `/api/v1` |
 | 본문 형식 | 요청·응답 모두 JSON. 본문이 있는 요청은 `Content-Type: application/json` |
 | 인증 | 보호된 API에 `Authorization: Bearer <access_token>` |
@@ -104,7 +113,7 @@ Gradio 콜백에서 명시적으로 전달하기 쉬운 Bearer 토큰 방식을 
 - 로그아웃은 현재 토큰만 폐기한다. 다른 로그인 세션에는 영향을 주지 않는다.
 - MVP에 갱신 토큰은 없다. 만료 시 다시 로그인한다.
 - 인증 오류에는 `WWW-Authenticate: Bearer` 헤더를 제공한다.
-- 외부 연결은 HTTPS를 사용한다.
+- 사용자 브라우저와 클라우드 서비스의 외부 연결은 공인 IP 기반 HTTP를 사용한다. 이 구간의 로그인 정보와 대화 내용은 전송 중 암호화되지 않는다.
 
 Gradio는 토큰과 현재 대화 ID를 사용자별 `gr.State`에 보관한다. 전역 변수나 공용 HTTP 클라이언트의 기본 인증 헤더에 저장하지 않는다. 토큰은 화면 컴포넌트에 출력하지 않고, 요청마다 해당 사용자의 헤더를 전달한다.
 
@@ -765,7 +774,8 @@ INFO db_save_success request_id=req_9f4c1d user_id=12 conversation_id=34 turn_id
 - [ ] 기록이 페이지 순서대로 표시되고 재접속 후에도 유지된다.
 - [ ] 타인 대화에 대한 질문·조회가 모두 404다.
 - [ ] 요청·AI 호출·DB 저장 성공 및 실패를 요청 ID로 추적할 수 있다.
-- [ ] 배포 주소에서 Gradio 로그인부터 질문·기록 조회까지 동작한다.
+- [ ] 외부 네트워크에서 `http://<PUBLIC_IP>/`로 접속해 Gradio 로그인부터 질문·기록 조회까지 동작한다.
+- [ ] `http://<PUBLIC_IP>/api/v1/health`가 HTTP 200과 `{"status":"ok"}`를 반환한다.
 - [ ] 재배포 후 SQLite 기록이 유지되고 클라우드에서 라즈베리파이 내부 API 호출이 가능하다.
 - [ ] 라즈베리파이 재시작·네트워크 단절 시 오류를 안내하고 연결·모델 복구 후 다시 질문할 수 있다.
 - [ ] 실제 모델로 단일·동시 요청의 지연과 메모리를 측정해 모델·출력 예산·제한값을 확정한다.
@@ -784,7 +794,7 @@ API의 기본 계약은 위 내용으로 구현할 수 있다. 아래 내용은 
 | 클라우드 ↔ 라즈베리파이 경로 | 사설망/VPN/보안 터널 방식·주소·접근 제어 확정 | 권순형 + 이재훈 |
 | 동시 처리·시간 제한 | 동시 1건·대기열 없음, LLM 120초 등 초기 제안 검증 | 이재훈 + 이진걸 + 권순형, 임준현 프론트 설정 반영 |
 | SQLite 스키마·저장·조회 | 8절을 기준으로 구현 및 DB 확인 가이드 작성 | 이진걸 |
-| 외부 URL·Gradio 배포 경로·DB 영속 경로 | 배포 환경에서 설정 | 권순형, 임준현·이진걸 연동 확인 |
+| 외부 URL·Gradio 배포 경로·DB 영속 경로 | 공인 IP의 HTTP :80 사용. 실제 IP·경로는 배포 환경에서 설정 | 권순형, 임준현·이진걸 연동 확인 |
 | 전체 흐름 시험 총괄 | 아직 미정. 각자 담당 기능의 시험은 수행 | 팀에서 지정 |
 
 그 밖의 브랜치·PR·개인별 유의미한 커밋 10회 이상·역할 기록은 원래 요구사항대로 관리한다. 이 API 문서가 배포 가이드와 전체 프로젝트 문서를 대신하지는 않는다.
@@ -795,7 +805,6 @@ API의 기본 계약은 위 내용으로 구현할 수 있다. 아래 내용은 
 - [Gradio Interface State: 전역 상태와 사용자 상태 구분](https://www.gradio.app/guides/interface-state)
 - [FastAPI Security: HTTP Bearer 인증](https://fastapi.tiangolo.com/tutorial/security/)
 - [FastAPI Handling Errors: 공통 오류 처리](https://fastapi.tiangolo.com/tutorial/handling-errors/)
-- [FastAPI HTTPS 배포](https://fastapi.tiangolo.com/deployment/https/)
 - [llama.cpp HTTP 서버: 실행기 선택 시 참고](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 
 위 문서는 프레임워크 동작 참고 자료다. 이 설계의 엔드포인트·상태값·제한값은 프로젝트용으로 정한 것이다.

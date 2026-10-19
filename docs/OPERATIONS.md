@@ -26,8 +26,7 @@
 | `PROXY_TIMEOUT_SECONDS` | 180 이상의 정수(초); NGINX 읽기·쓰기 대기 제한에도 적용 |
 | `TURN_STALE_SECONDS` | 210; 시작 시 및 10초마다 초과 턴 정리 |
 | `LOG_LEVEL` | INFO |
-| `SITE_ADDRESS` | Compose 전용; `https://`·포트·경로 없는 외부 DNS 도메인. 기본 `localhost`는 배포용이 아님 |
-| `ACME_EMAIL` | Compose 전용; Let's Encrypt 계정 등록 이메일. 최초 인증서 발급 시 필수 |
+| `COMPOSE_FILE` | 기본 compose.yaml 사용 시 생략. 명시할 때는 해당 파일 경로만 지정 |
 | `TOKENIZER_HOST_PATH` | Compose 전용; 호스트의 토크나이저 디렉터리 |
 
 시간 제한은 `연결 < 생성 < 내부 HTTP < 턴 < 프론트 < 프록시 < 정리` 순서여야 합니다.
@@ -37,42 +36,48 @@
 
 ## Docker Compose 배포
 
-배포 전에 `uv run python -m scripts.check_deploy`로 Docker 접근, 유효 Compose 설정,
-도메인·이메일, 시간 제한 일치, DB 마운트와 토크나이저 파일을 점검합니다.
-이 명령은 서비스 기동·LLM 호출·파일 변경을 하지 않고, 설정값이나 비밀을 출력하지 않습니다.
-실패 시 종료 코드 1이며 `--json`은 자동화용 결과를 제공합니다.
-LLM 없이 계정·화면만 배포할 때는 `--allow-unconfigured-llm`을 명시합니다.
-이 경우에도 도메인·시간 제한·DB 설정 검사는 유지됩니다. DNS 연결과 컨테이너 UID의
-파일 접근 권한, 실제 토크나이저/템플릿 일치는 이 사전 점검만으로 보장하지 않습니다.
-서비스 토큰은 백엔드·RPi와 동일하게 공백 없는 32자 이상의 ASCII 문자열만 허용합니다.
+### 기본 공인 IP HTTP 배포
 
-영속 디스크가 있는 단일 서버, Docker Engine + Compose, 서버에 연결된 도메인과 80/443 포트가 필요합니다.
-라즈베리파이와 클라우드는 VPN 등 암호화된 비공개 경로로 연결합니다.
-도메인·클라우드 계정·LLM 서버는 이 저장소에 포함되어 있지 않습니다.
+현재 [API 명세](../API_SPEC.md#31-인증-설계)는 `http://<PUBLIC_IP>/`의 TCP 80으로
+외부 접속하는 배포를 기준으로 합니다. 서비스용 도메인·DNS 등록·TLS 인증서가 필요하지 않습니다.
+브라우저와 서버 사이의 로그인 정보·대화 내용은 HTTP로 전송되며 암호화되지 않습니다.
+클라우드와 라즈베리파이는 Tailscale 등 암호화된 비공개 경로로 연결합니다.
+
+기본 `compose.yaml`은 backend·frontend·proxy를 기동하며 호스트에는 TCP 80만 공개합니다.
+NGINX는 인증서 없이 화면을 Gradio로, `/api/v1/*`와 API 문서를 FastAPI로 전달합니다.
+backend·frontend 포트는 Compose 내부에 둡니다. HTTP 템플릿은 HTTPS 이동이나 HSTS를 설정하지 않습니다.
+
+`.env`에서 LLM 주소·토큰·모델과 호스트 토크나이저 경로를 준비한 다음 실행합니다.
+이전 배포의 `COMPOSE_FILE`에 별도 프록시 override가 있다면 기본 `compose.yaml`만 선택하도록 변경합니다.
 
 ```bash
-cp .env.example .env
+cp -n .env.example .env
 mkdir -p models/tokenizer
-# .env의 SITE_ADDRESS, ACME_EMAIL, LLM_*와 TOKENIZER_HOST_PATH를 실제 값으로 설정합니다.
-docker compose up -d --build
-# Python 3의 표준 라이브러리만 사용하며, 프로젝트 .env는 Compose가 읽습니다.
-python3 -m scripts.manage_tls issue --dry-run
-python3 -m scripts.manage_tls issue
+# .env의 LLM_*와 TOKENIZER_HOST_PATH를 실제 값으로 설정합니다.
+uv run python -m scripts.check_deploy
+docker compose up -d --build --wait
+docker compose exec proxy nginx -t
 docker compose ps
-docker compose logs --tail 100 backend frontend proxy
 ```
 
-NGINX는 첫 실행 시 인증서가 없어도 기동합니다. 이때 80번 포트의 ACME 검증 경로와
-`/nginx-health`만 제공하며, 나머지 요청은 503입니다. 로그인·대화 화면은 HTTPS가 준비된 뒤 제공됩니다.
-`issue --dry-run`은 테스트 인증 기관으로 도메인 연결을 검사하고 인증서를 저장하지 않습니다.
-`issue`는 Certbot webroot 방식으로 실제 인증서를 발급하고 프록시를 재생성해 HTTPS를 활성화합니다.
-이 명령은 Let's Encrypt 이용약관에 동의하여 계정을 등록합니다. 도메인의 DNS와 80/443 포트를
-이 서버로 연결한 뒤 실행하세요. 공인 인증서 없이 로컬에서 개발할 때는 README의 8000/7860 실행을 사용합니다.
+`check_deploy`는 Docker 접근, 시간 제한, DB 마운트, LLM 설정과 토크나이저 파일을 확인합니다.
+점검이 실패하면 원인을 해결한 뒤 기동합니다. `--json`은 자동화용 결과를 제공합니다.
+LLM 없이 계정·화면만 배포할 때는 `--allow-unconfigured-llm`을 명시하며 AI 질문은 실패합니다.
+설정 점검만으로 실제 토크나이저 로딩이나 RPi 연결 성공이 보장되지는 않습니다.
 
-인증서는 `tls_certificates`, 검증 파일은 `acme_webroot` 볼륨을 공유합니다. NGINX에서는 두 볼륨 모두
-읽기 전용입니다. 인증서 경로는 `/etc/letsencrypt/live/<SITE_ADDRESS>/fullchain.pem`과 `privkey.pem`입니다.
-인증서가 준비되면 일반 HTTP 요청은 HTTPS로 308 전환하며 ACME 경로는 계속 HTTP로 제공합니다.
-프록시 healthcheck는 프로세스 확인이므로 인증서 준비 여부는 `https://<SITE_ADDRESS>`에서 따로 확인합니다.
+EC2 보안 그룹의 TCP 80을 열고, 외부 작업 PC에서 공인 IP를 실제 값으로 바꿔 확인합니다.
+
+```bash
+PUBLIC_IP=203.0.113.10
+curl -fsS -o /dev/null -w '%{http_code}\n' "http://$PUBLIC_IP/"
+curl -fsS "http://$PUBLIC_IP/api/v1/health"
+```
+
+HTTP 배포의 완료 기준은 외부 네트워크에서 UI·로그인·질문·기록 조회가 동작하고,
+`http://<PUBLIC_IP>/api/v1/health`가 HTTP 200과 `{"status":"ok"}`를 반환하는 것입니다.
+타임아웃·토크나이저·DB·LLM·백업 검사도 함께 수행합니다.
+
+### 공통 프록시·서비스 운영
 
 NGINX는 `/api/v1/*`, `/docs`, `/docs/*`, `/openapi.json`, `/redoc`를 백엔드로 전달하고
 나머지는 Gradio로 전달합니다. SSE 응답 버퍼링을 끄고 WebSocket Upgrade 헤더를 전달하며,
@@ -96,58 +101,15 @@ docker compose exec backend python -m scripts.check_llm
 이 점검은 인증된 `/internal/v1/health`만 호출하고 생성 슬롯을 사용하지 않습니다.
 health 성공 후에도 generate는 `AI_BUSY` 등을 반환할 수 있습니다.
 
-## 인증서 자동 갱신과 기존 배포 교체
-
-Certbot 컨테이너 자체는 스케줄러를 실행하지 않습니다. 최초 발급 후 다음 검사를 수행하고,
-배포 호스트에 systemd 타이머 또는 cron 중 하나로 하루 두 번 갱신 작업을 등록합니다.
-
-```bash
-python3 -m scripts.manage_tls renew --dry-run
-```
-
-Linux/systemd 호스트에서는 `deploy/systemd/b7-tls-renew.service`의 `/srv/B7-1`을
-실제 체크아웃 경로로 바꾼 뒤 아래와 같이 설치합니다. `/usr/bin/flock`도 필요합니다.
-root로 실행하는 체크아웃과 상위 디렉터리는 신뢰할 수 있는 운영자만 수정할 수 있어야 합니다.
-타이머는 호스트 시간대 03:17, 15:17 이후 최대 10분 지연하여 실행하고, 놓친 실행을
-다음 기동 때 수행합니다. 서비스 중복 실행은 파일 잠금으로 거부합니다.
-
-```bash
-sudo install -m 0644 deploy/systemd/b7-tls-renew.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now b7-tls-renew.timer
-sudo systemctl start b7-tls-renew.service
-sudo systemctl list-timers b7-tls-renew.timer
-sudo systemctl show b7-tls-renew.service -p Result -p ExecMainStatus
-sudo journalctl -u b7-tls-renew.service --since today
-```
-
-실패하면 service는 실패 상태와 비정상 종료 코드를 남깁니다. 원인을 해결하고
-`sudo systemctl start b7-tls-renew.service`로 다시 실행하세요. 타이머 자체가 활성 상태라는
-사실은 갱신 성공을 의미하지 않습니다. 결과·만료일도 확인해야 합니다.
-예약 중지는 `sudo systemctl disable --now b7-tls-renew.timer`입니다.
-예약 작업은 대화형 셸의 환경 변수를 상속하지 않으므로 Compose 프로젝트 이름과 설정을
-운영 `.env`에 일관되게 지정하세요. 백업 타이머에도 같은 규칙이 적용됩니다.
-
-systemd 대신 cron을 사용한다면 다음 예시를 적용하고 systemd 타이머는 비활성화합니다.
-
-```cron
-17 3,15 * * * cd /srv/B7-1 && /usr/bin/python3 -m scripts.manage_tls renew >> /srv/B7-1/tls-renew.log 2>&1
-```
-
-`/srv/B7-1`은 실제 배포 디렉터리로 바꿉니다. cron의 PATH에서 `docker`를 찾을 수 있어야 합니다.
-갱신은 만료가 가까운 인증서에만 수행됩니다. 성공 후 `nginx -t`와 무중단 reload로 새 인증서를 적용하며,
-Certbot 실패 시 reload하지 않습니다. 갱신 로그·실패 알림을 운영 환경에서 확인하세요.
-개인 키가 포함된 `tls_certificates` 볼륨은 Git에 넣지 않고 접근을 제한합니다.
-이 변경에서는 예약 파일과 절차만 추가했으며, 시스템 설치·인증서 갱신은 실행하지 않았습니다.
+## 기존 배포 교체
 
 기존 배포를 바꿀 때도 같은 Compose 프로젝트 이름과 `chat_data` 볼륨을 사용합니다.
-DB를 백업한 뒤 `docker compose up -d --build`로 프록시를 교체하고 위 최초 발급 절차를 수행합니다.
-이전 프록시의 인증서 저장 형식은 사용하지 않으므로 최초 발급이 끝날 때까지 짧은 서비스 중단이 있습니다.
+DB를 백업한 뒤 `docker compose up -d --build --wait`로 변경한 이미지를 적용합니다.
 DB 보존을 위해 `docker compose down -v`를 실행하지 않습니다.
+이전 배포에서 인증서 갱신 예약을 설치했다면 해당 타이머·cron 작업을 중지하고 제거합니다.
 
 NGINX 설정 확인: `docker compose exec proxy nginx -t`.
-공식 참고: [NGINX WebSocket 프록시](https://nginx.org/en/docs/http/websocket.html),
-[Certbot webroot·갱신](https://eff-certbot.readthedocs.io/en/stable/using.html).
+공식 참고: [NGINX WebSocket 프록시](https://nginx.org/en/docs/http/websocket.html).
 
 ## 컨테이너 로그 보관
 
@@ -189,6 +151,8 @@ Python 표준 라이브러리와 Docker만 필요합니다. 백엔드 이미지�
 Linux/systemd 배포에는 `deploy/systemd/b7-backup.service`와 `.timer`를 제공합니다.
 서비스의 `/srv/B7-1`을 실제 체크아웃 경로로, `/var/backups/b7`를 보관 경로로 수정한 뒤 설치합니다.
 root로 실행되므로 체크아웃과 상위 디렉터리는 신뢰할 수 있는 운영자만 쓸 수 있어야 합니다.
+예약 작업은 대화형 셸의 환경 변수를 상속하지 않으므로 Compose 프로젝트 이름과 설정을
+운영 `.env`에 일관되게 지정합니다.
 
 ```bash
 sudo install -m 0644 deploy/systemd/b7-backup.{service,timer} /etc/systemd/system/
@@ -246,28 +210,31 @@ sudo systemctl start b7-backup.timer
 ### 운영 상태 통합 점검
 
 배포 호스트에서 `python3 -m scripts.check_operations --backup-directory /var/backups/b7`를
-실행하면 컨테이너 healthcheck, 외부 HTTPS 화면·API, 인증서 만료, 컨테이너 내부 SQLite,
+실행하면 컨테이너 healthcheck, HTTP 화면·API, 컨테이너 내부 SQLite,
 LLM 준비 상태와 최신 백업의 무결성·스키마를 모아서 확인합니다. Python 표준 라이브러리와
 Docker 접근 권한, 백업 읽기 권한이 필요합니다. `--json`은 자동화용 결과입니다.
 하나라도 실패하면 종료 코드 1이며 비밀값·HTTP 오류 원문·대화 내용은 출력하지 않습니다.
 
-기본 인증서 잔여 기간은 14일 이상, 백업 최대 경과 시간은 26시간입니다.
-`--min-cert-days`, `--max-backup-age-hours`로 조정합니다. 백업 예약을 설치하지 않았다면
-백업 항목이 실패하는 것이 정상입니다. LLM 미설정·미준비도 실패로 보고합니다.
-점검은 생성·재시작·갱신·백업·복원을 수행하지 않으며, LLM에는 health만 요청합니다.
+기본 HTTP 점검 주소는 서버의 `http://127.0.0.1`입니다. 공인 IP나 다른 HTTP 포트를 확인하려면
+`--http-url http://<PUBLIC_IP>[:PORT]`를 지정합니다. URL에는 인증정보·경로·쿼리를 넣지 않습니다.
+
+백업 최대 경과 시간은 기본 26시간이며 `--max-backup-age-hours`로 조정합니다.
+백업 예약을 설치하지 않았다면 백업 항목이 실패하는 것이 정상입니다. LLM 미설정·미준비도 실패로 보고합니다.
+점검은 생성·재시작·백업·복원을 수행하지 않으며, LLM에는 health만 요청합니다.
 LLM 점검은 최대 150초 기다릴 수 있습니다. API health 성공과 별개로 DB를 읽어 검사합니다.
-호스트에서의 HTTPS 성공은 다른 외부 네트워크에서의 접속 성공을 보장하지 않습니다.
+호스트에서의 HTTP 성공은 다른 외부 네트워크에서의 접속 성공을 보장하지 않습니다.
 
 ### 전체 Compose 검증 환경
 
 `RUN_COMPOSE_TESTS=1 uv run pytest -q tests/test_compose.py`는 실제 세 이미지의 빌드와
-인증서 준비 전 기동, 임시 인증서를 통한 HTTPS, 회원가입·로그인·질문 실패 기록,
+인증서 없는 HTTP 기동, 회원가입·로그인·질문 실패 기록,
 프론트 컨테이너의 API 연결, 백엔드 재생성 후 데이터 보존을 확인하도록 작성되어 있습니다.
-CI의 `compose-smoke` 작업도 같은 검증을 사용합니다. Docker Engine과 OpenSSL이 필요합니다.
-고유 Compose 프로젝트·임시 볼륨·임시 인증서·임의의 로컬 포트를 사용하며 운영 `.env`를
+CI의 `compose-smoke` 작업도 같은 검증을 사용합니다. Docker Engine이 필요합니다.
+고유 Compose 프로젝트·임시 볼륨·임의의 로컬 HTTP 포트를 사용하며 운영 `.env`를
 읽지 않습니다. 테스트 종료 시 해당 테스트 프로젝트의 볼륨과 이미지만 제거합니다.
-LLM 연결은 비워 두므로 실제 추론·공인 인증서 발급·실제 라즈베리파이 연동은 검증하지 않습니다.
-이 작업에서 검증 코드는 추가했지만 실행하지 않았습니다. 통과 여부는 실행 후 기록해야 합니다.
+LLM 연결은 비워 두므로 실제 추론·실제 라즈베리파이 연동은 검증하지 않습니다.
+`tests/test_proxy.py`는 HTTP 라우팅·실시간 응답·전달 헤더·컨테이너 DNS 갱신을 검사합니다.
+이번 HTTP 전환과 HTTPS 설정 제거에서는 테스트 코드를 수정했으며 실행하지 않았습니다. 통과 여부는 실행 후 기록해야 합니다.
 
 화면 문의 번호와 `X-Request-ID`로 `request_received`, `db_save_success/failure`,
 `ai_call_start/success/failure`를 연결합니다. 질문·답변 원문과 비밀번호·토큰은 운영 로그에 출력하지 않습니다.
