@@ -1,0 +1,75 @@
+{
+  "date": "2026-10-19",
+  "application_revision": "8b85b5b04e2a7ea96eb6ee8989b58da3eaddcc3f",
+  "scope": "Public Pi5 adapter HTTPS verification; not an AWS deployment or a Tailscale-disabled client test",
+  "public_url": "https://rpi5.tail61485f.ts.net",
+  "public_dns_addresses": [
+    "103.84.155.153",
+    "103.84.155.217"
+  ],
+  "tested_public_ip": "103.84.155.153",
+  "test_route": "TLS to public IP via curl --resolve with no proxy, bypassing MagicDNS and private tailnet addresses",
+  "unauthenticated_status": 401,
+  "authenticated_status": 200,
+  "health": {
+    "status": "ready",
+    "model": "local-advisor",
+    "active_requests": 0,
+    "max_concurrency": 1
+  },
+  "generation": {
+    "model": "local-advisor",
+    "answer": "안녕하세요! 😊",
+    "finish_reason": "stop",
+    "usage": {
+      "input_tokens": 21,
+      "output_tokens": 4
+    },
+    "latency_ms": 447
+  },
+  "relay_checks": [
+    {
+      "public_ip": "103.84.155.153",
+      "authenticated_status": 200,
+      "egress_interface": "wlan0"
+    },
+    {
+      "public_ip": "103.84.155.217",
+      "authenticated_status": 200,
+      "egress_interface": "wlan0"
+    }
+  ],
+  "health_recheck": {
+    "checked_at_utc": "2026-10-19T11:47:43+00:00",
+    "unauthenticated_status": 401,
+    "relay_checks": [
+      {
+        "public_ip": "103.84.155.153",
+        "authenticated_status": 200,
+        "health": {
+          "status": "ready",
+          "model": "local-advisor",
+          "active_requests": 0,
+          "max_concurrency": 1
+        }
+      },
+      {
+        "public_ip": "103.84.155.217",
+        "authenticated_status": 200,
+        "health": {
+          "status": "ready",
+          "model": "local-advisor",
+          "active_requests": 0,
+          "max_concurrency": 1
+        }
+      }
+    ]
+  },
+  "not_verified": [
+    "AWS backend deployment",
+    "A separate caller device with Tailscale disabled",
+    "S7 FE app switched from the private endpoint to the public URL",
+    "Full model and adapter startup after reboot",
+    "Public HTTPS deployment of the chatbot UI"
+  ]
+}

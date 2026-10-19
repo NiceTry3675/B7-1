@@ -4,6 +4,8 @@
 학생·진로와 일상의 선택을 고민하는 사용자를 위한 프로젝트이며,
 인증·사용자별 대화 기록·최근 문맥·오류 복구를 [API_SPEC.md](API_SPEC.md) v0.3에 맞춰 구현했습니다.
 
+S7 FE·RPi5 구성, 공개 HTTPS 연결 설정과 남은 확인은 [현재 실행 상태](docs/STATUS.md)에 정리했습니다.
+
 ## 구현 범위
 
 - 서비스 API 10개: 회원가입, 로그인, 로그아웃, 내 정보, 위인 목록, 새 대화, 대화 목록, 질문, 기록, 상태 확인
@@ -15,7 +17,7 @@
 
 라즈베리파이 내부 API 어댑터와 BRCM/V3DV Vulkan·Mesa 연구 패치는 이 저장소에 포함했습니다.
 **llama.cpp 프로세스 제어, 모델 다운로드·로딩·실제 추론은 별도 작업입니다.**
-평가용 실제 Gemma 실행은 CPU 경로로 계획했고, GPU 패치의 정적 근거와 한계는
+평가용 실제 Gemma 실행은 CPU 경로로 검증했고, GPU 패치의 정적 근거와 한계는
 [V3DV tile 분석](docs/V3DV_TILE_ANALYSIS.md)에 적었습니다.
 packed 4×8 정수 dot 경로는 [별도 분석](docs/V3DV_DOT4X8.md)에 정리했습니다.
 외부 생성형 AI로 전환하거나 가짜 답변을 반환하지 않습니다. 연결 설정이 없으면 질문이
@@ -93,7 +95,8 @@ Gradio 토큰과 현재 대화는 `gr.State`에만 저장하고, HTTP 클라이�
 `POST /internal/v1/generate`, `GET /internal/v1/health`와 분리된 Vulkan 패치를 다룹니다.
 백엔드는 서비스 토큰과 `X-Request-ID`를 전달합니다. HTTP 요청은 자동 재시도하지 않습니다.
 
-1. 사설망/VPN으로 접근할 주소를 `LLM_BASE_URL`에 설정합니다. `/internal/v1`은 붙이지 않습니다.
+1. 사설망/VPN 주소 또는 인증된 공개 HTTPS 주소를 `LLM_BASE_URL`에 설정합니다.
+   `/internal/v1`은 붙이지 않습니다. 현재 공개 주소와 AWS용 설정은 [실행 상태](docs/STATUS.md#aws-backend-connection)를 따릅니다.
 2. `openssl rand -hex 32` 등으로 32바이트 난수를 ASCII 토큰으로 인코딩해 백엔드와 라즈베리파이에 동일하게 주입합니다.
 3. 모델 별칭, 컨텍스트 크기, 출력 예산, 시간 제한을 양쪽에서 맞춥니다.
 4. 실제 모델과 동일한 **토크나이저 파일 및 채팅 템플릿**을 백엔드에도 배치합니다.

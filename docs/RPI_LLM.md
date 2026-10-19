@@ -13,6 +13,11 @@ B7-1 FastAPI -> private tunnel/VPN -> rpi_llm adapter :8001
                                       -> Gemma 3 1B GGUF on RPi5 CPU
 ```
 
+The verified public HTTPS route is an alternative to the backend's private VPN
+connection. See the [current status and AWS settings](STATUS.md): the caller
+needs only HTTPS and the service key, while Pi5 continues running Tailscale Funnel.
+The tablet's existing private route has not been changed.
+
 - Run one adapter process. A Linux process lease rejects a second adapter for
   the same runtime URL. Run llama-server with `--parallel 1` and a loopback bind.
 - The adapter admits one job and queues zero jobs. A second request receives
@@ -40,7 +45,8 @@ Create `.env` from `.env.example` locally. Do not commit `.env` or GGUF files.
 The two services use the same ASCII `LLM_SERVICE_TOKEN` (for example,
 `openssl rand -hex 32`, which encodes 32 random bytes) and
 `LLM_MODEL` alias. The cloud/backend sets `LLM_BASE_URL` to the private adapter
-address, without `/internal/v1`. The Raspberry Pi adapter reads:
+address or the authenticated public HTTPS origin, without `/internal/v1`.
+The Raspberry Pi adapter reads:
 
 | Variable | Meaning |
 | --- | --- |
