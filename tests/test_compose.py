@@ -1,8 +1,7 @@
-"""Opt-in full-stack smoke test with disposable project, data and TLS certificate."""
+"""Opt-in full-stack HTTP smoke test with disposable project and data."""
 
 import json
 import os
-import ssl
 import subprocess
 from pathlib import Path
 from uuid import uuid4
@@ -21,8 +20,6 @@ def stack(tmp_path):
     project = "b7-smoke-" + uuid4().hex[:10]
     environment = os.environ.copy()
     environment.update(
-        SITE_ADDRESS="localhost",
-        ACME_EMAIL="",
         LLM_BASE_URL="",
         LLM_SERVICE_TOKEN="",
         LLM_MODEL="local-advisor",
@@ -84,42 +81,23 @@ def stack(tmp_path):
             "read_only": True,
         },
     ]
-    certificates = tmp_path / "certificates"
-    certificates.mkdir()
-    config["services"]["proxy"]["volumes"] = [
-        {
-            "type": "bind",
-            "source": str(certificates),
-            "target": "/etc/letsencrypt",
-            "read_only": True,
-        },
-        {
-            "type": "volume",
-            "source": "acme_webroot",
-            "target": "/var/www/certbot",
-            "read_only": True,
-        },
-    ]
     config["services"]["proxy"]["ports"] = [
-        {"target": port, "published": "0", "host_ip": "127.0.0.1"} for port in (80, 443)
+        {"target": 80, "published": "0", "host_ip": "127.0.0.1"}
     ]
-    del config["services"]["certbot"]
-    config["volumes"] = {
-        name: {"name": f"{project}_{name}"} for name in ("chat_data", "acme_webroot")
-    }
+    config["volumes"] = {"chat_data": {"name": f"{project}_chat_data"}}
     config["networks"] = {"default": {"name": f"{project}_default"}}
     generated.write_text(json.dumps(config))
     try:
         run("build", timeout=900)
         run("up", "-d", "--wait", "--wait-timeout", "180", timeout=240)
-        yield run, certificates
+        yield run
     finally:
         # Only this generated project owns the named resources removed here.
         run("down", "--volumes", "--remove-orphans", "--rmi", "all", check=False)
 
 
-def test_full_stack_bootstrap_https_and_persistence(stack):
-    run, certificates = stack
+def test_full_stack_http_without_certificates_and_persistence(stack):
+    run = stack
     run(
         "exec",
         "-T",
@@ -139,42 +117,12 @@ def test_full_stack_bootstrap_https_and_persistence(stack):
         "assert find_spec('transformers') is None",
     )
     address = run("port", "proxy", "80").stdout.strip()
-    with httpx.Client(trust_env=False, timeout=15) as client:
-        assert client.get(f"http://{address}/nginx-health").status_code == 200
-        assert client.get(f"http://{address}/").status_code == 503
-    live = certificates / "live" / "localhost"
-    live.mkdir(parents=True)
-    cert = live / "fullchain.pem"
-    subprocess.run(
-        [
-            "openssl",
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:2048",
-            "-nodes",
-            "-days",
-            "1",
-            "-subj",
-            "/CN=localhost",
-            "-addext",
-            "subjectAltName=DNS:localhost,IP:127.0.0.1",
-            "-keyout",
-            str(live / "privkey.pem"),
-            "-out",
-            str(cert),
-        ],
-        check=True,
-        capture_output=True,
-        timeout=30,
-    )
-    run("up", "-d", "--no-deps", "--force-recreate", "--wait", "proxy")
-    address = run("port", "proxy", "443").stdout.strip()
-    context = ssl.create_default_context(cafile=str(cert))
-    with httpx.Client(
-        base_url=f"https://{address}", verify=context, trust_env=False, timeout=30
-    ) as c:
-        assert c.get("/").status_code == 200
+    with httpx.Client(base_url=f"http://{address}", trust_env=False, timeout=30) as c:
+        assert c.get("/nginx-health").status_code == 200
+        response = c.get("/")
+        assert response.status_code == 200
+        assert "location" not in response.headers
+        assert "strict-transport-security" not in response.headers
         assert c.get("/api/v1/health").json() == {"status": "ok"}
         assert "/api/v1/conversations" in c.get("/openapi.json").json()["paths"]
         credentials = {"email": "smoke@example.org", "password": "Smoke-only-password123!"}

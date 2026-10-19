@@ -1,19 +1,17 @@
-"""Read-only deployment checks: containers, HTTPS, API, SQLite, LLM and latest backup."""
+"""Read-only deployment checks: containers, HTTP, API, SQLite, LLM and latest backup."""
 
 import argparse
 import http.client
 import json
-import re
 import sqlite3
-import ssl
 import subprocess
-import time
 from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from scripts.backup_store import stored_backups
-from scripts.compose_support import Check, compose, configuration, report
+from scripts.compose_support import Check, compose, report
 from scripts.restore_db import inspect_backup
 
 DB_PROBE = (
@@ -26,46 +24,44 @@ DB_PROBE = (
 )
 
 
-def https_request(domain, path):
-    with closing(
-        http.client.HTTPSConnection(domain, timeout=10, context=ssl.create_default_context())
-    ) as c:
-        c.connect()
-        expires = ssl.cert_time_to_seconds(c.sock.getpeercert()["notAfter"])
+def http_request(host, port, path):
+    with closing(http.client.HTTPConnection(host, port=port, timeout=10)) as c:
         c.request("GET", path)
         response = c.getresponse()
-        # Never follow a redirect or emit response content from a failing endpoint.
-        return response.status, response.read(1024 * 1024), expires
+        # Inspect the original response; a redirect must not hide a wrong proxy configuration.
+        return response.status, response.read(1024 * 1024)
 
 
-def https_checks(domain, *, min_cert_days=14):
-    if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?", domain):
-        return [Check("https", False, "SITE_ADDRESS 형식을 확인하세요.")]
+def http_checks(base_url):
+    try:
+        url = urlsplit(base_url)
+        port = url.port if url.port is not None else 80
+        if (
+            url.scheme != "http"
+            or not url.hostname
+            or url.username is not None
+            or url.password is not None
+            or url.path not in {"", "/"}
+            or url.query
+            or url.fragment
+            or not 1 <= port <= 65535
+        ):
+            raise ValueError("Invalid HTTP origin")
+    except ValueError:
+        return [
+            Check("http", False, "--http-url에 인증정보·경로 없는 http://주소[:포트]를 지정하세요.")
+        ]
     checks = []
-    try:
-        status, _, expires = https_request(domain, "/")
-        days = (expires - time.time()) / 86400
-        checks.extend(
-            [
-                Check("certificate", days >= min_cert_days, f"인증서 잔여 기간 {int(days)}일."),
-                Check("frontend_https", status == 200, "HTTPS 화면 경로 응답 확인."),
-            ]
-        )
-    except (OSError, ValueError, KeyError, http.client.HTTPException):
-        checks.append(
-            Check("frontend_https", False, "DNS·TLS 인증서·HTTPS 화면 연결을 확인하세요.")
-        )
-    try:
-        status, payload, _ = https_request(domain, "/api/v1/health")
-        checks.append(
-            Check(
-                "public_api",
-                status == 200 and json.loads(payload) == {"status": "ok"},
-                "HTTPS 프록시를 통한 서비스 API 확인.",
-            )
-        )
-    except (OSError, ValueError, KeyError, http.client.HTTPException):
-        checks.append(Check("public_api", False, "HTTPS API 경로 연결 또는 응답 오류."))
+    for name, path in (("frontend_http", "/"), ("public_api", "/api/v1/health")):
+        ok = False
+        try:
+            status, payload = http_request(url.hostname, port, path)
+            ok = status == 200
+            if name == "public_api":
+                ok = ok and json.loads(payload) == {"status": "ok"}
+        except (OSError, ValueError, http.client.HTTPException):
+            pass
+        checks.append(Check(name, ok, "HTTP 프록시 응답 확인. 주소·포트·서비스 상태를 확인하세요."))
     return checks
 
 
@@ -124,18 +120,17 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--backup-directory", type=Path, default=Path("/var/backups/b7"))
     parser.add_argument("--max-backup-age-hours", type=float, default=26)
-    parser.add_argument("--min-cert-days", type=int, default=14)
+    parser.add_argument(
+        "--http-url",
+        default="http://127.0.0.1",
+        help="HTTP 점검 주소. 기본값은 서버의 로컬 80번 포트.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    if args.max_backup_age_hours <= 0 or args.min_cert_days < 1:
-        parser.error("백업 허용 시간과 인증서 최소 잔여 일수는 양수여야 합니다.")
+    if args.max_backup_age_hours <= 0:
+        parser.error("백업 허용 시간은 양수여야 합니다.")
     checks = container_checks()
-    try:
-        config = configuration()
-        domain = str(config["services"]["proxy"]["environment"]["SITE_ADDRESS"])
-        checks.extend(https_checks(domain, min_cert_days=args.min_cert_days))
-    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
-        checks.append(Check("configuration", False, "유효 Compose 설정을 읽을 수 없습니다."))
+    checks.extend(http_checks(args.http_url))
     checks.extend(backend_checks())
     checks.append(backup_check(args.backup_directory, max_age_hours=args.max_backup_age_hours))
     raise SystemExit(report(checks, as_json=args.json))

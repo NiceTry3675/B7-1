@@ -70,29 +70,12 @@ services:
         condition: service_healthy
     ports:
       - "80:80"
-      - "443:443"
     environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
       PROXY_TIMEOUT_SECONDS: ${PROXY_TIMEOUT_SECONDS:-180}
-    volumes:
-      - tls_certificates:/etc/letsencrypt:ro
-      - acme_webroot:/var/www/certbot:ro
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1/nginx-health"]
       interval: 15s
       timeout: 5s
       retries: 3
-  certbot:
-    logging: *service-logging
-    image: certbot/certbot:v5.8.0
-    profiles: [tls]
-    environment:
-      SITE_ADDRESS: ${SITE_ADDRESS:-localhost}
-      ACME_EMAIL: ${ACME_EMAIL:-}
-    volumes:
-      - tls_certificates:/etc/letsencrypt
-      - acme_webroot:/var/www/certbot
 volumes:
   chat_data:
-  tls_certificates:
-  acme_webroot:

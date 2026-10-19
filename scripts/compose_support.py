@@ -21,7 +21,7 @@ def compose(*args, timeout=60):
 
 
 def configuration():
-    value = json.loads(compose("--profile", "tls", "config", "--format", "json").stdout)
+    value = json.loads(compose("config", "--format", "json").stdout)
     if not isinstance(value, dict) or not isinstance(value.get("services"), dict):
         raise ValueError("Compose configuration is invalid")
     return value

@@ -25,11 +25,9 @@ def config(tmp_path):
             "frontend": {"environment": {"BACKEND_TIMEOUT_SECONDS": "160"}},
             "proxy": {
                 "environment": {
-                    "SITE_ADDRESS": "chat.example.org",
                     "PROXY_TIMEOUT_SECONDS": "180",
                 }
             },
-            "certbot": {"environment": {"ACME_EMAIL": "admin@example.org"}},
         }
     }
 

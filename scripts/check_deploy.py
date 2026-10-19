@@ -2,7 +2,6 @@
 
 import argparse
 import os
-import re
 import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -11,37 +10,15 @@ from app.config import Settings
 from scripts.compose_support import Check, configuration, report
 
 
-def public_domain(value):
-    labels = value.split(".")
-    return (
-        1 < len(labels)
-        and len(value) <= 253
-        and all(re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?", s) for s in labels)
-        and not labels[-1].isdigit()
-        and labels[-1].lower() not in {"localhost", "local", "test", "invalid", "example"}
-    )
-
-
 def validate(config, *, allow_unconfigured_llm=False):
     services = config.get("services", {})
-    required = {"backend", "frontend", "proxy", "certbot"}
+    required = {"backend", "frontend", "proxy"}
     if not required.issubset(services):
-        return [Check("services", False, "backend/frontend/proxy/certbot 서비스가 필요합니다.")]
+        return [Check("services", False, "backend/frontend/proxy 서비스가 필요합니다.")]
     backend = services["backend"]
     env = backend.get("environment", {})
     proxy_env = services["proxy"].get("environment", {})
-    tls_env = services["certbot"].get("environment", {})
     checks = [
-        Check(
-            "domain",
-            public_domain(str(proxy_env.get("SITE_ADDRESS", ""))),
-            "SITE_ADDRESS는 공인 DNS 도메인이어야 합니다. DNS 연결 자체는 별도 확인하세요.",
-        ),
-        Check(
-            "acme_email",
-            bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", str(tls_env.get("ACME_EMAIL", "")))),
-            "ACME_EMAIL 인증서 등록 이메일을 확인합니다.",
-        ),
         Check(
             "private_ports",
             not backend.get("ports") and not services["frontend"].get("ports"),
