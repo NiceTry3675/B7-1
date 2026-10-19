@@ -17,6 +17,16 @@ def configured(settings):
     )
 
 
+async def test_non_ascii_service_token_is_configuration_error(settings):
+    config = configured(settings).model_copy(update={"llm_service_token": "한" * 11})
+    llm = LLMClient(config)
+    try:
+        with pytest.raises(APIError, match="AI_CONFIG_ERROR"):
+            llm.check_configuration()
+    finally:
+        await llm.close()
+
+
 def result(**updates):
     return {
         "model": "local-advisor",

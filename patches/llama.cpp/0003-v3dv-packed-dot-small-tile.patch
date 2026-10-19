@@ -1,0 +1,17 @@
+diff --git a/ggml/src/ggml-vulkan/ggml-vulkan.cpp b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+index c05c016..c3d2ca0 100644
+--- a/ggml/src/ggml-vulkan/ggml-vulkan.cpp
++++ b/ggml/src/ggml-vulkan/ggml-vulkan.cpp
+@@ -4299,6 +4299,12 @@ static void ggml_vk_load_shaders(vk_device& device, vk_pipeline requested) {
+         } else if (device->architecture == BRCM_VC7 && device->subgroup_size == 16 && !device->coopmat_support) {
+             // Two warps cover BN=32 with 16 columns each.
+             s_warptile[5] = 16;
++            s_warptile_mmq[5] = 16;
++            s_warptile_mmq_int[5] = 16;
++            s_warptile_mmq_int_k[5] = 16;
++            s_warptile_mmqid[5] = 16;
++            s_warptile_mmqid_int[5] = 16;
++            s_warptile_mmqid_int_k[5] = 16;
+         }
+ 
+         l_mmq_wg_denoms = l_wg_denoms = {128, 128, 1 };

@@ -1,0 +1,41 @@
+diff --git a/src/broadcom/compiler/vir_register_allocate.c b/src/broadcom/compiler/vir_register_allocate.c
+index e7924a6ac79..28a2a7adebe 100644
+--- a/src/broadcom/compiler/vir_register_allocate.c
++++ b/src/broadcom/compiler/vir_register_allocate.c
+@@ -21,6 +21,7 @@
+  * IN THE SOFTWARE.
+  */
+ 
++#include "util/log.h"
+ #include "util/ralloc.h"
+ #include "util/register_allocate.h"
+ #include "common/v3d_device_info.h"
+@@ -1590,6 +1591,28 @@ v3d_register_allocate(struct v3d_compile *c)
+         if (c->thread_index >= 1)
+                 c->thread_index--;
+ 
++        if (V3D_DBG(RA) && !c->devinfo->has_accumulators) {
++                uint32_t v8dot = 0;
++                uint32_t nnmode_uu = 0, nnmode_ss = 0;
++                uint32_t nnmode_su = 0, nnmode_us = 0;
++                vir_for_each_inst_inorder(inst, c) {
++                        if (inst->qpu.type != V3D_QPU_INSTR_TYPE_ALU)
++                                continue;
++                        v8dot += inst->qpu.alu.mul.op == V3D_QPU_M_V8DOT;
++                        nnmode_uu += inst->qpu.alu.add.op == V3D_QPU_A_SETNNMODE_UU;
++                        nnmode_ss += inst->qpu.alu.add.op == V3D_QPU_A_SETNNMODE_SS;
++                        nnmode_su += inst->qpu.alu.add.op == V3D_QPU_A_SETNNMODE_SU;
++                        nnmode_us += inst->qpu.alu.add.op == V3D_QPU_A_SETNNMODE_US;
++                }
++                mesa_logi("V3D RA pre-spill %s prog %d/%d: %u live, "
++                          "%u RF registers, %d threads, %u v8dot, "
++                          "nnmode uu/ss/su/us=%u/%u/%u/%u",
++                          vir_get_stage_name(c), c->program_id, c->variant_id,
++                          vir_get_max_temps(c), PHYS_COUNT >> c->thread_index,
++                          c->threads, v8dot, nnmode_uu, nnmode_ss,
++                          nnmode_su, nnmode_us);
++        }
++
+         c->g = ra_alloc_interference_graph(c->compiler->regs, num_ra_nodes);
+         ra_set_select_reg_callback(c->g, v3d_ra_select_callback, &callback_data);
+ 
