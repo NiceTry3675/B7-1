@@ -1,10 +1,11 @@
 # 위인 챗봇 API 설계서
 
-- 버전: 0.3 (구현 전 설계 초안)
+- 버전: 0.3 (서비스·내부 API 계약)
 - 작성일: 2026-09-17
 - 대상: Gradio 프론트엔드, FastAPI 백엔드, SQLite, 라즈베리파이의 로컬 LLM
 - 기준: [프로젝트 요구사항](requirement.md), 2026-09-14 회의록, 이후 합의한 챗봇 방식·로컬 LLM 사용·팀 역할 분담
-- 이 문서의 URL, 필드, 제한값, 인증 방식은 구현을 위한 제안이다. 아직 구현되거나 검증된 API는 아니다.
+- 서비스 API와 RPi 어댑터 API는 구현되어 있다. 실제 Gemma 실행·배포 검증은 별도 단계다.
+- Front·Backend·RPi의 상태·전이·간선 없는 칸과 오프라인 검증은 [서비스 CTS](docs/SERVICE_CTS.md)에 정리했다.
 
 ### 0.3 변경 사항
 
@@ -475,7 +476,7 @@ AI를 기다리는 동안 SQLite 쓰기 트랜잭션을 열어 두지 않는다.
 
 ### 6.4 라즈베리파이 내부 LLM API
 
-이 절은 이재훈과 이진걸이 함께 구현할 **프로젝트 자체 규격**이다. 특정 모델 런타임에서 기본 제공하는 API라고 가정하지 않는다. 예를 들어 llama.cpp의 HTTP 서버를 선택하면 이재훈이 내부 래퍼에서 해당 런타임 요청·응답을 변환한다. 실행기와 모델은 아직 미정이다. [llama.cpp 서버 공식 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
+이 절은 **프로젝트 자체 규격**이다. `rpi_llm/` 어댑터는 llama.cpp HTTP 서버의 요청·응답을 변환하고, Gemma 3 1B GGUF를 설정 대상으로 삼는다. 실제 모델 실행과 성능은 아직 검증하지 않았다. [llama.cpp 서버 공식 문서](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 
 #### 공통 연결·인증
 
@@ -517,11 +518,11 @@ AI를 기다리는 동안 SQLite 쓰기 트랜잭션을 열어 두지 않는다.
 
 | 필드 | 검증 규칙 |
 | --- | --- |
-| `model` | 필수 문자열. 서버가 로드하도록 설정한 모델 별칭과 일치해야 함 |
-| `system_prompt` | 필수 비어 있지 않은 문자열. 서비스 백엔드가 DB에서 구성 |
+| `model` | 필수 문자열, 최대 128자. 서버가 로드하도록 설정한 모델 별칭과 일치해야 함 |
+| `system_prompt` | 필수 비어 있지 않은 문자열, 최대 8192자. 서비스 백엔드가 DB에서 구성 |
 | `messages` | 필수 배열. 최근 최대 5개 완료 턴 + 현재 질문으로 1~11개, user/assistant 교대, 첫·마지막 역할은 user |
 | `messages[].role` | `user` 또는 `assistant`. 시스템 지시는 별도 필드로 전달 |
-| `messages[].content` | 비어 있지 않은 문자열. 합산 토큰 수로 최종 제한 |
+| `messages[].content` | 비어 있지 않은 문자열, 항목당 최대 8192자. 합산 토큰 수로 최종 제한 |
 | `max_output_tokens` | 필수 정수, 초기 제안 1~512. 실제 모델 한도를 추가 검사 |
 | `temperature` | 필수 숫자, 0~1. 초기 제안 0.7 |
 
@@ -571,6 +572,7 @@ AI를 기다리는 동안 SQLite 쓰기 트랜잭션을 열어 두지 않는다.
 - 슬롯은 원자적으로 획득한다. 여러 래퍼 작업자를 실행해 각각 1건씩 모델을 호출하지 않도록 단일 추론 관리자를 둔다.
 - 사용 중이면 새 요청은 바로 `503 LLM_BUSY`와 `Retry-After: 5`를 반환한다. 대기 시간 5초는 완료 보장이 아니며 자동 재전송하지 않는다.
 - 요청 취소·연결 끊김·시간 초과 때도 실제 추론이 종료되기 전에는 슬롯을 해제하지 않는다. 남은 추론이 새 요청과 겹치지 않게 한다.
+- 시간 초과 응답 뒤 작업자가 아직 실행 중이면 `active_requests=1`이고 새 요청은 `LLM_BUSY`다. 작업자는 끝났지만 종료 상태가 불확실하면 `LLM_NOT_READY`이며, 내부 `/slots`가 비었음을 확인해야 다시 받는다.
 - 작업 큐가 필요해지면 별도 비동기 작업 설계를 검토한다. 현재 동기 API에 무제한 대기를 추가하지 않는다.
 
 #### 내부 오류와 서비스 API 변환
@@ -719,6 +721,9 @@ INFO db_save_success request_id=req_9f4c1d user_id=12 conversation_id=34 turn_id
 | `LLM_SERVICE_TOKEN` | 백엔드 + 라즈베리파이 | 동일한 서비스 인증 토큰, 필수 비밀값 |
 | `LLM_MODEL` | 백엔드 + 라즈베리파이 | 동일한 모델 별칭, 예: `local-advisor` |
 | `LLM_MODEL_PATH` | 라즈베리파이 | 실제 로컬 모델 파일 위치. 실행기에 맞춰 적용 |
+| `LLM_RUNTIME_URL` | 라즈베리파이 | llama-server의 loopback HTTP 주소 |
+| `LLM_RUNTIME_TIMEOUT_SECONDS` | 라즈베리파이 | runtime HTTP 제한, 초기 130초 |
+| `LLM_RUNTIME_PROBE_TIMEOUT_SECONDS` | 라즈베리파이 | readiness/slot 점검 전체 제한, 초기 5초 |
 | `LLM_CONTEXT_TOKENS` | 백엔드 + 라즈베리파이 | 실제 로드한 컨텍스트 크기. 모델 및 메모리 측정 후 동일하게 확정 |
 | `LLM_MAX_OUTPUT_TOKENS` | 백엔드 | 요청 출력 예산, 초기 256 |
 | `LLM_OUTPUT_TOKEN_LIMIT` | 라즈베리파이 | 허용 출력 예산 상한, 초기 512 |
@@ -735,7 +740,7 @@ INFO db_save_success request_id=req_9f4c1d user_id=12 conversation_id=34 turn_id
 
 위 환경 변수는 이 프로젝트 코드가 읽어 적용하는 설정이며 모델 실행기가 자동으로 해석한다고 가정하지 않는다. 프록시의 180초 이상 대기는 권순형이 배포 설정에서 적용한다. 서비스 시작 시 필수 설정과 시간 제한의 순서를 검사한다. 모델 파일·컨텍스트 크기·실행기 버전은 이재훈이 실측 후 확정한다.
 
-`LLM_SERVICE_TOKEN`은 최소 32바이트의 안전한 난수로 생성해 두 서버에 주입하고, 누락되면 내부 연동 설정 오류로 처리한다. 개발 PC·라즈베리파이·클라우드의 실제 주소·토큰 값은 이 문서에 적지 않는다. 분리 배포 시 Gradio 서비스에는 LLM 서비스 토큰을 주입하지 않는다.
+`LLM_SERVICE_TOKEN`은 최소 32바이트의 안전한 난수를 hex/base64url 등 ASCII로 인코딩해 두 서버에 주입한다. HTTP 헤더에 담을 수 없는 비 ASCII 토큰이나 누락된 토큰은 설정 오류로 처리한다. 개발 PC·라즈베리파이·클라우드의 실제 주소·토큰 값은 이 문서에 적지 않는다. 분리 배포 시 Gradio 서비스에는 LLM 서비스 토큰을 주입하지 않는다.
 
 ## 11. 구현 완료 확인 기준
 

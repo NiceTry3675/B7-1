@@ -1,0 +1,2 @@
+patches/llama.cpp/*.patch -whitespace
+patches/mesa/*.patch -whitespace
