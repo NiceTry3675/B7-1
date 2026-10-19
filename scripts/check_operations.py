@@ -60,7 +60,7 @@ def http_checks(base_url):
             if name == "public_api":
                 ok = ok and json.loads(payload) == {"status": "ok"}
         except (OSError, ValueError, http.client.HTTPException):
-            pass
+            ok = False
         checks.append(Check(name, ok, "HTTP 프록시 응답 확인. 주소·포트·서비스 상태를 확인하세요."))
     return checks
 
