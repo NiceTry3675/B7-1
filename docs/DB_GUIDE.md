@@ -35,13 +35,36 @@ erDiagram
 
 이 방법은 별도 관리자 조회 API 없이 소유자의 인증으로 기록을 확인합니다.
 
-## 로컬 관리자 SQL
+## 관리자 SQL 조회
 
-SQLite CLI가 설치된 호스트에서:
+SQLite CLI가 설치된 호스트에서 실행합니다. 실행 환경에 따라 DB 파일 위치가 다릅니다.
+
+### 로컬 실행 환경
+
+Python으로 직접 실행하고 기본 `DATABASE_URL=sqlite:///./data/chat.db`를 사용하는 경우,
+저장소 루트에서 조회합니다.
 
 ```bash
-sqlite3 -header -column data/chat.db < scripts/check_logs.sql
+sqlite3 -readonly -header -column data/chat.db < scripts/check_logs.sql
 ```
+
+### Docker Compose 운영 환경
+
+운영 DB는 백엔드 컨테이너의 `/data/chat.db`이며 Docker 영속 볼륨에 저장됩니다.
+호스트의 `/srv/B7-1/data/chat.db`는 이 DB의 경로가 아닙니다.
+현재 EC2 배포의 볼륨 이름은 `b7_chat_data`이므로 실제 마운트 경로를 조회한 뒤 사용합니다.
+
+```bash
+cd /srv/B7-1
+B7_DB_DIR="$(docker volume inspect b7_chat_data --format '{{.Mountpoint}}')"
+
+sudo sqlite3 -readonly -header -column "$B7_DB_DIR/chat.db" \
+  < scripts/check_logs.sql
+```
+
+`sudo`는 Docker 볼륨 경로의 접근 권한 때문에 사용하며, `-readonly`는 DB를 읽기 전용으로 엽니다.
+다른 Compose 프로젝트 이름으로 배포했다면 `docker volume ls`에서 실제 볼륨 이름을 확인하고
+명령의 `b7_chat_data`를 해당 이름으로 바꿉니다.
 
 스크립트는 상태와 시각을 확인하며 비밀번호·토큰 해시를 출력하지 않습니다.
 특정 대화의 실제 질문·답변 확인 SQL은 주석으로 제공합니다. 승인된 평가에서만 사용하고
