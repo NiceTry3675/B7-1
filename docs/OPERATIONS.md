@@ -119,6 +119,58 @@ NGINX 설정 확인: `docker compose exec proxy nginx -t`.
 설정을 바꾸면 `docker compose up -d --force-recreate`로 컨테이너를 재생성해야 적용됩니다.
 조회는 기존처럼 `docker compose logs --tail 100 backend frontend proxy`를 사용합니다.
 
+### 평가 중 요청·AI·DB 로그 확인
+
+EC2의 배포 디렉터리에서 다음 명령으로 백엔드 로그를 열고, 서비스 화면에서 새 질문을 전송합니다.
+배포 경로가 다르면 `/srv/B7-1`을 실제 경로로 바꿉니다.
+
+```bash
+cd /srv/B7-1
+docker compose logs -f --since=1m --timestamps --no-color backend
+```
+
+`-f`는 새 로그를 계속 표시하고, `--since=1m`은 최근 1분부터 조회합니다.
+`--timestamps`는 시각을 붙이고, `--no-color`는 색상 제어 문자를 제거합니다.
+`backend`는 조회할 서비스입니다. `Ctrl+C`로 로그 조회를 끝내도 서비스는 계속 실행됩니다.
+
+정상 질문에서는 같은 `request_id`로 다음 사건이 순서대로 나타납니다.
+아래는 요청 ID와 부가 필드를 생략한 예시입니다.
+
+```text
+request_received
+db_save_success status=processing
+ai_call_start
+ai_call_success latency_ms=...
+db_save_success status=completed
+```
+
+`ai_call_start` 줄의 요청 ID를 복사해 해당 요청만 조회할 수 있습니다.
+API로 시연할 때는 응답 헤더의 `X-Request-ID`, 오류 응답에서는 JSON의 `request_id`로도 확인합니다.
+다음 명령은 `rg`(ripgrep)가 설치된 환경에서 사용하며, 시간 범위는 요청 시각에 맞춰 조정합니다.
+
+```bash
+B7_REQUEST_ID='여기에 실제 req_로 시작하는 요청 ID'
+docker compose logs --since=10m --timestamps --no-color backend 2>&1 \
+  | rg -F "$B7_REQUEST_ID"
+```
+
+장애 시연은 격리 환경에서 수행하고, 같은 요청 ID의 로그 순서로 실패 단계를 설명합니다.
+
+| 상황 | 핵심 로그 순서 | 해석 |
+| --- | --- | --- |
+| AI 호출 실패 | `ai_call_failure code=AI_UNAVAILABLE` → `db_save_success status=failed` | AI 호출이 실패했고, 실패 기록은 DB에 저장됨 |
+| AI 성공 후 DB 저장 실패 | `ai_call_success` → `db_save_failure code=DB_ERROR` | AI 응답을 받은 뒤 최종 DB 저장 단계에서 실패함 |
+
+`db_save_success status=failed`는 실패 상태를 정상적으로 저장했다는 뜻입니다.
+DB 작업 자체의 오류를 기록하는 `db_save_failure`와 구분합니다.
+
+로그의 `conversation_id`와 `turn_id`를 사용해 같은 사용자의 인증으로
+`GET /api/v1/conversations/{conversation_id}/turns`를 조회합니다.
+응답 목록에서 `id`가 `turn_id`와 같은 항목의 `status`, `error_code`, 완료 시각을 확인합니다.
+DB에는 `request_id`를 저장하지 않으므로 `request_id → 로그의 turn_id → DB 기록`으로 연결합니다.
+조회·페이지 이동과 직접 SQL 확인 절차는 [DB 확인 가이드](DB_GUIDE.md#api로-평가)를 참고합니다.
+질문·답변 원문, 비밀번호, 토큰은 운영 로그에 출력하지 않습니다.
+
 ## 백업과 복원
 
 실행 중인 SQLite 파일이나 WAL 파일을 단순 복사하지 않고 SQLite backup API를 사용합니다.
